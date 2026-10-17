@@ -1,15 +1,12 @@
 import type { Host } from "../core/host";
 import type { TrackInfo } from "../core/track";
+import { createSpotifyWebSearch, type SpotifyWebSearch } from "./spotifyWebSearch";
 
 // The Spicy Lyrics API is keyed by Spotify track id. Yandex Music tracks are
-// matched by metadata: a Spotify search first — with the user's own client
-// credentials, or else through the add-on's search server (server/spotify-search),
-// which holds the add-on's Spotify app — then ListenBrainz (no key, but it does not
-// know most new and Russian releases).
-
-// The add-on's Spotify search server; "" turns it off. Its origin must also be in
-// addon.config.mjs allowedUrls.
-export const SPOTIFY_SEARCH_SERVER = "";
+// matched by metadata: a Spotify search first — Spotify's Web API when the user set
+// client credentials, otherwise Spotify's own web search without keys
+// (spotifyWebSearch.ts) — and ListenBrainz alongside (no key, but it does not know
+// most new and Russian releases).
 
 export interface SpotifyItem {
   id: string;
@@ -100,24 +97,25 @@ export function listenBrainzQueries(track: TrackInfo): MetadataQuery[] {
 
 interface Found {
   ids: string[];
-  // Whether a Spotify search took part; a lookup made without one is redone once a
-  // search is possible (keys entered, search server deployed).
+  // Whether a Spotify search took part; a lookup made without one (search down, older
+  // builds) is redone while a search is possible.
   searched: boolean;
 }
 
 export function createSpotifyIdResolver(
   host: Pick<Host, "fetch" | "storage">,
   creds: () => { clientId: string; clientSecret: string },
-  options: { searchServer?: string } = {},
+  // null keeps Spotify's web search out (tests of the other paths).
+  options: { webSearch?: SpotifyWebSearch | null } = {},
 ): SpotifyIdResolver {
-  const searchServer = (options.searchServer ?? SPOTIFY_SEARCH_SERVER).replace(/\/+$/, "");
+  const webSearch = options.webSearch === undefined ? createSpotifyWebSearch(host) : options.webSearch;
   const memory = new Map<string, Found>();
   const inflight = new Map<string, Promise<string[] | undefined>>();
   let token: { key: string; value: string; expiresAt: number } | null = null;
 
   const canSearch = () => {
     const { clientId, clientSecret } = creds();
-    return Boolean(searchServer || (clientId && clientSecret));
+    return Boolean((clientId && clientSecret) || webSearch?.available());
   };
 
   async function readCache(trackId: string): Promise<string[] | undefined> {
@@ -200,56 +198,44 @@ export function createSpotifyIdResolver(
     }
   }
 
-  // The search server answers in the shape of Spotify's search items.
-  async function serverSearch(title: string, artist: string, signal?: AbortSignal): Promise<SpotifyItem[] | undefined> {
-    const url = new URL(`${searchServer}/search`);
-    url.searchParams.set("track", title);
-    if (artist) url.searchParams.set("artist", artist);
-    try {
-      const response = await host.fetch(url.href, { timeoutMs: 10_000, signal });
-      if (!response.ok) return undefined;
-      const payload = (await response.json()) as { items?: unknown };
-      return Array.isArray(payload.items) ? (payload.items as SpotifyItem[]) : [];
-    } catch {
-      return undefined;
+  // Searches to try in order until one finds the track: Spotify's Web API takes field
+  // filters; the web search takes words, as typed into Spotify's search box.
+  function spotifyQueries(track: TrackInfo, bearer: string | null | undefined, signal?: AbortSignal) {
+    const titles = [track.title, ...(track.version ? [`${track.title} ${track.version}`] : [])];
+    const artist = track.artists[0] ?? "";
+    if (bearer) return titles.map((title) => () => spotifySearch(title, artist, bearer, signal));
+    if (!webSearch?.available()) return [];
+    const terms = [...titles.map((title) => `${title} ${artist}`.trim()), ...(track.album ? [`${track.title} ${track.album}`] : [])];
+    return [...new Set(terms)].map((term) => () => webSearch.search(term, signal));
+  }
+
+  async function searchSpotify(track: TrackInfo, signal?: AbortSignal): Promise<{ ids: string[]; searched: boolean; failed: boolean }> {
+    const bearer = await spotifyToken(signal);
+    const queries = spotifyQueries(track, bearer, signal);
+    let failed = bearer === undefined && queries.length === 0;
+    let searched = false;
+    for (const query of queries) {
+      const items = await query();
+      if (signal?.aborted) break;
+      if (items === undefined) {
+        failed = true;
+        continue;
+      }
+      searched = true;
+      const ids = pickSpotifyCandidates(track, items);
+      if (ids.length > 0) return { ids, searched, failed: false };
     }
+    return { ids: [], searched, failed };
   }
 
   async function lookup(track: TrackInfo, signal?: AbortSignal): Promise<string[] | undefined> {
-    const found: string[] = [];
-    let failed = false;
-    let searched = false;
-    const bearer = await spotifyToken(signal);
+    // Spotify ranks its own releases, so its matches go before ListenBrainz's.
+    const [spotify, fromListenBrainz] = await Promise.all([searchSpotify(track, signal), listenBrainz(listenBrainzQueries(track), signal)]);
     if (signal?.aborted) return [];
-    if (bearer === undefined && !searchServer) failed = true;
-    const search = bearer
-      ? (title: string, artist: string) => spotifySearch(title, artist, bearer, signal)
-      : searchServer
-        ? (title: string, artist: string) => serverSearch(title, artist, signal)
-        : null;
-    if (search) {
-      // Spotify ranks its own releases, so search matches go first.
-      for (const title of [track.title, ...(track.version ? [`${track.title} ${track.version}`] : [])]) {
-        const items = await search(title, track.artists[0] ?? "");
-        if (signal?.aborted) return [];
-        if (items === undefined) {
-          failed = true;
-          continue;
-        }
-        searched = true;
-        const ids = pickSpotifyCandidates(track, items);
-        if (ids.length > 0) {
-          found.push(...ids);
-          break;
-        }
-      }
-    }
-    const fromListenBrainz = await listenBrainz(listenBrainzQueries(track), signal);
-    if (signal?.aborted) return [];
-    if (fromListenBrainz === undefined) failed = true;
-    const ids = [...new Set([...found, ...(fromListenBrainz ?? [])])];
+    const failed = spotify.failed || fromListenBrainz === undefined;
+    const ids = [...new Set([...spotify.ids, ...(fromListenBrainz ?? [])])];
     if (ids.length === 0 && failed) return undefined;
-    await writeCache(track.id, { ids, searched });
+    await writeCache(track.id, { ids, searched: spotify.searched });
     return ids;
   }
 

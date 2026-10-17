@@ -22,7 +22,6 @@
   },
   "include": [
     "src",
-    "server",
     "tests",
     "preview",
     "scripts/*.d.mts",

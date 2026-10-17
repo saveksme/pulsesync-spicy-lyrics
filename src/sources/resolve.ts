@@ -84,7 +84,9 @@ function sourcesSignature(settings: Settings): string {
 // another release of the song has a word-level one.
 // v4: earlier builds cached unsynced text where LRCLIB has a synced upload (an untimed
 // lyricsfile counted as synced, busy answers were not retried) or Spicy had only text.
-const STORED_VERSION = 4;
+// v5: earlier builds could not find most tracks on Spotify (no keyless Spotify search), so
+// they cached fallbacks where Spicy has word-level lyrics.
+const STORED_VERSION = 5;
 
 interface StoredLyrics {
   v: typeof STORED_VERSION;

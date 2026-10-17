@@ -15,6 +15,8 @@ const addonConfig = {
         'https://api.spicylyrics.org',
         'https://labs.api.listenbrainz.org',
         'https://lrclib.net',
+        'https://open.spotify.com',
+        'https://api-partner.spotify.com',
         'https://accounts.spotify.com',
         'https://api.spotify.com',
         'https://fonts.spikerko.org',

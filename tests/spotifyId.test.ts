@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createSpotifyIdResolver, normalizeTitle, pickSpotifyCandidates } from "../src/sources/spotifyId";
+import { createSpotifyIdResolver, normalizeTitle, pickSpotifyCandidates, type SpotifyItem } from "../src/sources/spotifyId";
+import type { SpotifyWebSearch } from "../src/sources/spotifyWebSearch";
 import { fakeFetch, memoryStorage } from "./helpers/fakeHost";
 
 const track = {
@@ -54,50 +55,46 @@ describe("spotify id", () => {
     expect(await r.candidates(track)).toEqual([B, A]);
   });
 
-  // The add-on's own search server (server/spotify-search) holds the Spotify keys, so users need none.
-  describe("through the add-on's search server", () => {
-    const server = "https://search.test";
-    const found = (url: URL) =>
-      Response.json({
-        items: [
-          { id: A, name: "Хочешь?", duration_ms: 220000, artists: [{ name: "Земфира" }], album: { name: "Хочешь?" } },
-          { id: B, name: "Хочешь?", duration_ms: 220400, artists: [{ name: "Земфира" }], album: { name: "Прости меня моя любовь" } },
-        ].filter(() => url.searchParams.get("track") === "Хочешь?" && url.searchParams.get("artist") === "Земфира"),
-      });
-
-    it("searches Spotify through it when the user has no Spotify keys", async () => {
-      const host = {
-        storage: memoryStorage(),
-        fetch: fakeFetch({ "https://labs.api.listenbrainz.org/": () => Response.json([]), [`${server}/search`]: found }),
-      };
-      expect(await createSpotifyIdResolver(host, noCreds, { searchServer: server }).candidates(track)).toEqual([B, A]);
+  // Without keys, Spotify's own (web player) search finds the track; ListenBrainz does not know
+  // most new and Russian releases.
+  describe("through Spotify's web search, without keys", () => {
+    const listenBrainzEmpty = { "https://labs.api.listenbrainz.org/": () => Response.json([]) };
+    const item = (id: string, album: string) => ({ id, name: "Хочешь?", duration_ms: 220300, artists: [{ name: "Земфира" }], album: { name: album } });
+    const webSearch = (answers: Record<string, SpotifyItem[] | undefined>, asked: string[] = []): SpotifyWebSearch => ({
+      available: () => true,
+      search: async (term) => {
+        asked.push(term);
+        return term in answers ? answers[term] : [];
+      },
     });
 
-    it("looks again once it is available instead of trusting a lookup made without it", async () => {
+    it("finds every release of the track, the one from the same album first", async () => {
+      const search = webSearch({ "Хочешь? Земфира": [item(A, "Хочешь?"), item(B, "Прости меня моя любовь")] });
+      const r = createSpotifyIdResolver({ storage: memoryStorage(), fetch: fakeFetch(listenBrainzEmpty) }, noCreds, { webSearch: search });
+      expect(await r.candidates(track)).toEqual([B, A]);
+    });
+
+    it("asks with the album when title and artist find nothing", async () => {
+      const asked: string[] = [];
+      const search = webSearch({ "Хочешь? Прости меня моя любовь": [item(B, "Прости меня моя любовь")] }, asked);
+      const r = createSpotifyIdResolver({ storage: memoryStorage(), fetch: fakeFetch(listenBrainzEmpty) }, noCreds, { webSearch: search });
+      expect(await r.candidates(track)).toEqual([B]);
+      expect(asked).toEqual(["Хочешь? Земфира", "Хочешь? Прости меня моя любовь"]);
+    });
+
+    it("looks again instead of trusting a lookup made without a Spotify search", async () => {
       const storage = memoryStorage();
-      const listenBrainzOnly = createSpotifyIdResolver(
-        { storage, fetch: fakeFetch({ "https://labs.api.listenbrainz.org/": () => Response.json([]) }) },
-        noCreds,
-        { searchServer: "" },
-      );
+      const listenBrainzOnly = createSpotifyIdResolver({ storage, fetch: fakeFetch(listenBrainzEmpty) }, noCreds, { webSearch: null });
       expect(await listenBrainzOnly.candidates(track)).toEqual([]);
-      const withServer = createSpotifyIdResolver(
-        { storage, fetch: fakeFetch({ "https://labs.api.listenbrainz.org/": () => Response.json([]), [`${server}/search`]: found }) },
-        noCreds,
-        { searchServer: server },
-      );
-      expect(await withServer.candidates(track)).toEqual([B, A]);
+      const search = webSearch({ "Хочешь? Земфира": [item(A, "Прости меня моя любовь")] });
+      const withSearch = createSpotifyIdResolver({ storage, fetch: fakeFetch(listenBrainzEmpty) }, noCreds, { webSearch: search });
+      expect(await withSearch.candidates(track)).toEqual([A]);
     });
 
-    it("counts a server failure as a failed lookup, not as no match", async () => {
-      const host = {
-        storage: memoryStorage(),
-        fetch: fakeFetch({
-          "https://labs.api.listenbrainz.org/": () => Response.json([]),
-          [`${server}/search`]: () => new Response('{"error":"upstream_unavailable"}', { status: 502 }),
-        }),
-      };
-      expect(await createSpotifyIdResolver(host, noCreds, { searchServer: server }).candidates(track)).toBeUndefined();
+    it("counts a failed search as a failed lookup, not as no match", async () => {
+      const search = webSearch({ "Хочешь? Земфира": undefined, "Хочешь? Прости меня моя любовь": undefined });
+      const r = createSpotifyIdResolver({ storage: memoryStorage(), fetch: fakeFetch(listenBrainzEmpty) }, noCreds, { webSearch: search });
+      expect(await r.candidates(track)).toBeUndefined();
     });
   });
 
@@ -105,7 +102,7 @@ describe("spotify id", () => {
     const storage = memoryStorage();
     await storage.set("spotifyIds:123", { ids: [], at: Date.now() });
     const host = { storage, fetch: fakeFetch({ "https://labs.api.listenbrainz.org/": () => Response.json([{ spotify_track_ids: [A] }]) }) };
-    expect(await createSpotifyIdResolver(host, noCreds).candidates(track)).toEqual([A]);
+    expect(await createSpotifyIdResolver(host, noCreds, { webSearch: null }).candidates(track)).toEqual([A]);
   });
 
   // Spotify has several releases of one song; only some carry word-level lyrics in Spicy,
@@ -127,7 +124,7 @@ describe("spotify id", () => {
         },
       }),
     };
-    const r = createSpotifyIdResolver(host, noCreds);
+    const r = createSpotifyIdResolver(host, noCreds, { webSearch: null });
     expect(await r.candidates(duet)).toEqual([A, B]);
     expect(bodies).toEqual([
       [
@@ -159,11 +156,13 @@ describe("spotify id", () => {
     const down = createSpotifyIdResolver(
       { storage: memoryStorage(), fetch: fakeFetch({ "https://labs.api.listenbrainz.org/": () => new Response("busy", { status: 503 }) }) },
       noCreds,
+      { webSearch: null },
     );
     expect(await down.candidates(track)).toBeUndefined();
     const empty = createSpotifyIdResolver(
       { storage: memoryStorage(), fetch: fakeFetch({ "https://labs.api.listenbrainz.org/": () => Response.json([]) }) },
       noCreds,
+      { webSearch: null },
     );
     expect(await empty.candidates(track)).toEqual([]);
   });

@@ -49,9 +49,6 @@ npm run preview    # превью страницы с фиктивным пле�
 - `src/ui/` — страница-оверлей, NowBar, фон Kawarp, иконки.
 - `src/styles/` — CSS Spicy Lyrics (перенесён скриптом) и `ym.css` с правками под Яндекс Музыку.
 - `preview/` — превью для браузера; `tests/` — тесты.
-- `server/spotify-search/` — Cloudflare Worker, который ищет Spotify ID трека в каталоге Spotify от имени
-  Spotify-приложения автора: Spicy находит тексты только по Spotify ID, а ListenBrainz не знает большинства
-  новых и русских релизов. Развёртывание — в [его README](server/spotify-search/README.md).
 
 ## Ключ Spicy Lyrics
 
@@ -71,6 +68,18 @@ npm run preview    # превью страницы с фиктивным пле�
 в Allowed origins значение `null` и замените ключ на свой, чтобы не расходовать общий лимит. Тексты Spicy показываются по их правилам:
 источник виден всегда, для текстов сообщества указаны загрузивший и синхронизировавший, кэш не дольше 30 дней
 (у аддона — 3 дня).
+
+## Поиск трека в Spotify
+
+Spicy находит тексты только по Spotify ID, а Яндекс Музыка его не знает. Справочник ListenBrainz не знает
+большинства новых и русских релизов, поэтому аддон ищет трек в каталоге Spotify без ключей
+(`src/sources/spotifyWebSearch.ts`), так же как официальное приложение
+[Spicy Lyrics Mobile](https://github.com/spicylyrics/mobile). Embed-страница плеера Spotify выдаёт каждому
+посетителю анонимную сессию веб-плеера, а поиск веб-плеера (`api-partner.spotify.com/pathfinder`,
+операция `searchDesktop`) её принимает. Это недокументированный путь: если Spotify сменит хеш сохранённого
+запроса (ответ `PersistedQueryNotFound`), поиск отключится до обновления аддона, а подбор продолжит работать
+через ListenBrainz и, если указаны, свои ключи Spotify. Новый хеш берётся из веб-плеера Spotify или из Spicy
+Lyrics Mobile (`AnonymousSpotifyCatalogSearch.kt`).
 
 ## Лицензии
 

@@ -15,7 +15,8 @@ export const SETTINGS_SCHEMA = {
   spotifyClientId: {
     type: "text",
     name: "Spotify Client ID (необязательно)",
-    description: "Улучшает поиск трека в библиотеке Spicy Lyrics. Создаётся на developer.spotify.com.",
+    description:
+      "Не обязателен: аддон и так находит трек в Spotify. С ключом приложения с developer.spotify.com поиск идёт через официальный Spotify Web API.",
     default: "",
   },
   spotifyClientSecret: {
