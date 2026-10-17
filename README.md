@@ -49,6 +49,9 @@ npm run preview    # превью страницы с фиктивным пле�
 - `src/ui/` — страница-оверлей, NowBar, фон Kawarp, иконки.
 - `src/styles/` — CSS Spicy Lyrics (перенесён скриптом) и `ym.css` с правками под Яндекс Музыку.
 - `preview/` — превью для браузера; `tests/` — тесты.
+- `server/spotify-search/` — Cloudflare Worker, который ищет Spotify ID трека в каталоге Spotify от имени
+  Spotify-приложения автора: Spicy находит тексты только по Spotify ID, а ListenBrainz не знает большинства
+  новых и русских релизов. Развёртывание — в [его README](server/spotify-search/README.md).
 
 ## Ключ Spicy Lyrics
 

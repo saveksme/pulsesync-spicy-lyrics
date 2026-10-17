@@ -2,8 +2,14 @@ import type { Host } from "../core/host";
 import type { TrackInfo } from "../core/track";
 
 // The Spicy Lyrics API is keyed by Spotify track id. Yandex Music tracks are
-// matched by metadata: ListenBrainz first (no key), then Spotify Search when
-// the user supplied client credentials.
+// matched by metadata: a Spotify search first — with the user's own client
+// credentials, or else through the add-on's search server (server/spotify-search),
+// which holds the add-on's Spotify app — then ListenBrainz (no key, but it does not
+// know most new and Russian releases).
+
+// The add-on's Spotify search server; "" turns it off. Its origin must also be in
+// addon.config.mjs allowedUrls.
+export const SPOTIFY_SEARCH_SERVER = "";
 
 export interface SpotifyItem {
   id: string;
@@ -92,26 +98,45 @@ export function listenBrainzQueries(track: TrackInfo): MetadataQuery[] {
   return queries;
 }
 
+interface Found {
+  ids: string[];
+  // Whether a Spotify search took part; a lookup made without one is redone once a
+  // search is possible (keys entered, search server deployed).
+  searched: boolean;
+}
+
 export function createSpotifyIdResolver(
   host: Pick<Host, "fetch" | "storage">,
   creds: () => { clientId: string; clientSecret: string },
+  options: { searchServer?: string } = {},
 ): SpotifyIdResolver {
-  const memory = new Map<string, string[]>();
+  const searchServer = (options.searchServer ?? SPOTIFY_SEARCH_SERVER).replace(/\/+$/, "");
+  const memory = new Map<string, Found>();
   const inflight = new Map<string, Promise<string[] | undefined>>();
   let token: { key: string; value: string; expiresAt: number } | null = null;
 
+  const canSearch = () => {
+    const { clientId, clientSecret } = creds();
+    return Boolean(searchServer || (clientId && clientSecret));
+  };
+
   async function readCache(trackId: string): Promise<string[] | undefined> {
-    if (memory.has(trackId)) return memory.get(trackId);
-    const entry = await host.storage.get<{ v?: number; ids: string[]; at: number }>(`spotifyIds:${trackId}`).catch(() => undefined);
-    if (!entry || entry.v !== CACHE_VERSION || typeof entry.at !== "number" || !Array.isArray(entry.ids)) return undefined;
-    if (Date.now() - entry.at > (entry.ids.length ? FOUND_TTL_MS : MISS_TTL_MS)) return undefined;
-    memory.set(trackId, entry.ids);
-    return entry.ids;
+    let found = memory.get(trackId);
+    if (!found) {
+      const entry = await host.storage
+        .get<{ v?: number; ids: string[]; at: number; searched?: boolean }>(`spotifyIds:${trackId}`)
+        .catch(() => undefined);
+      if (!entry || entry.v !== CACHE_VERSION || typeof entry.at !== "number" || !Array.isArray(entry.ids)) return undefined;
+      if (Date.now() - entry.at > (entry.ids.length ? FOUND_TTL_MS : MISS_TTL_MS)) return undefined;
+      found = { ids: entry.ids, searched: entry.searched === true };
+      memory.set(trackId, found);
+    }
+    return found.searched || !canSearch() ? found.ids : undefined;
   }
 
-  async function writeCache(trackId: string, ids: string[]) {
-    memory.set(trackId, ids);
-    await host.storage.set(`spotifyIds:${trackId}`, { v: CACHE_VERSION, ids, at: Date.now() }).catch(() => undefined);
+  async function writeCache(trackId: string, found: Found) {
+    memory.set(trackId, found);
+    await host.storage.set(`spotifyIds:${trackId}`, { v: CACHE_VERSION, ...found, at: Date.now() }).catch(() => undefined);
   }
 
   // One POST for all spellings; the answers come back in query order.
@@ -175,19 +200,44 @@ export function createSpotifyIdResolver(
     }
   }
 
+  // The search server answers in the shape of Spotify's search items.
+  async function serverSearch(title: string, artist: string, signal?: AbortSignal): Promise<SpotifyItem[] | undefined> {
+    const url = new URL(`${searchServer}/search`);
+    url.searchParams.set("track", title);
+    if (artist) url.searchParams.set("artist", artist);
+    try {
+      const response = await host.fetch(url.href, { timeoutMs: 10_000, signal });
+      if (!response.ok) return undefined;
+      const payload = (await response.json()) as { items?: unknown };
+      return Array.isArray(payload.items) ? (payload.items as SpotifyItem[]) : [];
+    } catch {
+      return undefined;
+    }
+  }
+
   async function lookup(track: TrackInfo, signal?: AbortSignal): Promise<string[] | undefined> {
     const found: string[] = [];
     let failed = false;
+    let searched = false;
     const bearer = await spotifyToken(signal);
     if (signal?.aborted) return [];
-    if (bearer === undefined) failed = true;
-    if (bearer) {
-      // Spotify ranks its own releases, so a search match goes first.
+    if (bearer === undefined && !searchServer) failed = true;
+    const search = bearer
+      ? (title: string, artist: string) => spotifySearch(title, artist, bearer, signal)
+      : searchServer
+        ? (title: string, artist: string) => serverSearch(title, artist, signal)
+        : null;
+    if (search) {
+      // Spotify ranks its own releases, so search matches go first.
       for (const title of [track.title, ...(track.version ? [`${track.title} ${track.version}`] : [])]) {
-        const items = await spotifySearch(title, track.artists[0] ?? "", bearer, signal);
+        const items = await search(title, track.artists[0] ?? "");
         if (signal?.aborted) return [];
-        if (items === undefined) failed = true;
-        const ids = items ? pickSpotifyCandidates(track, items) : [];
+        if (items === undefined) {
+          failed = true;
+          continue;
+        }
+        searched = true;
+        const ids = pickSpotifyCandidates(track, items);
         if (ids.length > 0) {
           found.push(...ids);
           break;
@@ -199,7 +249,7 @@ export function createSpotifyIdResolver(
     if (fromListenBrainz === undefined) failed = true;
     const ids = [...new Set([...found, ...(fromListenBrainz ?? [])])];
     if (ids.length === 0 && failed) return undefined;
-    await writeCache(track.id, ids);
+    await writeCache(track.id, { ids, searched });
     return ids;
   }
 

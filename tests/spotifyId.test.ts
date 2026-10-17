@@ -54,6 +54,53 @@ describe("spotify id", () => {
     expect(await r.candidates(track)).toEqual([B, A]);
   });
 
+  // The add-on's own search server (server/spotify-search) holds the Spotify keys, so users need none.
+  describe("through the add-on's search server", () => {
+    const server = "https://search.test";
+    const found = (url: URL) =>
+      Response.json({
+        items: [
+          { id: A, name: "Хочешь?", duration_ms: 220000, artists: [{ name: "Земфира" }], album: { name: "Хочешь?" } },
+          { id: B, name: "Хочешь?", duration_ms: 220400, artists: [{ name: "Земфира" }], album: { name: "Прости меня моя любовь" } },
+        ].filter(() => url.searchParams.get("track") === "Хочешь?" && url.searchParams.get("artist") === "Земфира"),
+      });
+
+    it("searches Spotify through it when the user has no Spotify keys", async () => {
+      const host = {
+        storage: memoryStorage(),
+        fetch: fakeFetch({ "https://labs.api.listenbrainz.org/": () => Response.json([]), [`${server}/search`]: found }),
+      };
+      expect(await createSpotifyIdResolver(host, noCreds, { searchServer: server }).candidates(track)).toEqual([B, A]);
+    });
+
+    it("looks again once it is available instead of trusting a lookup made without it", async () => {
+      const storage = memoryStorage();
+      const listenBrainzOnly = createSpotifyIdResolver(
+        { storage, fetch: fakeFetch({ "https://labs.api.listenbrainz.org/": () => Response.json([]) }) },
+        noCreds,
+        { searchServer: "" },
+      );
+      expect(await listenBrainzOnly.candidates(track)).toEqual([]);
+      const withServer = createSpotifyIdResolver(
+        { storage, fetch: fakeFetch({ "https://labs.api.listenbrainz.org/": () => Response.json([]), [`${server}/search`]: found }) },
+        noCreds,
+        { searchServer: server },
+      );
+      expect(await withServer.candidates(track)).toEqual([B, A]);
+    });
+
+    it("counts a server failure as a failed lookup, not as no match", async () => {
+      const host = {
+        storage: memoryStorage(),
+        fetch: fakeFetch({
+          "https://labs.api.listenbrainz.org/": () => Response.json([]),
+          [`${server}/search`]: () => new Response('{"error":"upstream_unavailable"}', { status: 502 }),
+        }),
+      };
+      expect(await createSpotifyIdResolver(host, noCreds, { searchServer: server }).candidates(track)).toBeUndefined();
+    });
+  });
+
   it("looks again instead of trusting ids cached by an earlier version", async () => {
     const storage = memoryStorage();
     await storage.set("spotifyIds:123", { ids: [], at: Date.now() });
