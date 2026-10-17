@@ -42,7 +42,8 @@ export class LyricsPage {
   private readonly doc: Document;
   private settings: Settings;
   private mode: PageMode = "page";
-  private view: ViewState = { nowBarOpen: true, nowBarSide: "left" };
+  // Spicy Lyrics starts with the NowBar closed (uiState $isNowBarOpen = false).
+  private view: ViewState = { nowBarOpen: false, nowBarSide: "left" };
   private track: TrackInfo | null = null;
   private lyricsState: LyricsState = { status: "idle" };
 

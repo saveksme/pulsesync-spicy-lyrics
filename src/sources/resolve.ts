@@ -30,6 +30,22 @@ const INVALID_KEY_MESSAGE = "Ключ Spicy Lyrics недействителен 
 export const BUILT_IN_KEY_REFUSED_MESSAGE =
   "Spicy Lyrics сейчас не принимает встроенный ключ — показываю тексты Яндекс Музыки и LRCLIB. Можно указать свой ключ в настройках аддона.";
 
+// Spicy requests per track: each costs one request of the per-viewer allowance.
+const MAX_SPICY_CANDIDATES = 3;
+const PRECISION: Record<Lyrics["Type"], number> = { Syllable: 3, Line: 2, Static: 1 };
+// Lyrics ending well after the track ends belong to another version (live, extended).
+const END_TOLERANCE_SEC = 5;
+
+function lastTime(lyrics: Lyrics): number {
+  if (lyrics.Type === "Syllable") return Math.max(0, ...lyrics.Content.map((line) => line.Lead.EndTime));
+  if (lyrics.Type === "Line") return Math.max(0, ...lyrics.Content.map((line) => line.EndTime));
+  return 0;
+}
+
+function fitsTrack(lyrics: Lyrics, track: TrackInfo): boolean {
+  return track.durationMs <= 0 || lastTime(lyrics) <= track.durationMs / 1000 + END_TOLERANCE_SEC;
+}
+
 export function sourceSteps(settings: Settings): StepId[] {
   const order =
     settings.sourceOrder === "yandexFirst"
@@ -61,8 +77,9 @@ function sourcesSignature(settings: Settings): string {
   ].join("|");
 }
 
-// v2: entries from builds before the built-in key may hold fallbacks cached while Spicy was off.
-const STORED_VERSION = 2;
+// v3: earlier builds cached fallbacks while Spicy was off, or a line-level Spicy sync where
+// another release of the song has a word-level one.
+const STORED_VERSION = 3;
 
 interface StoredLyrics {
   v: typeof STORED_VERSION;
@@ -124,20 +141,34 @@ export function createLyricsResolver(host: Host, deps: { spotify?: SpotifyIdReso
       run.degraded = true;
       return null;
     }
-    const spotifyId = await spotify.resolve(track, signal);
-    if (spotifyId === undefined) run.degraded = true;
-    if (!spotifyId || signal.aborted) return null;
-    const result = await fetchSpicyLyrics(host, key, spotifyId, signal);
-    if (result.ok) return result.lyrics;
-    if (result.reason === "unauthorized" && invalidKey !== key) {
-      invalidKey = key;
-      host.notify(builtIn ? BUILT_IN_KEY_REFUSED_MESSAGE : INVALID_KEY_MESSAGE);
+    const ids = await spotify.candidates(track, signal);
+    if (ids === undefined) run.degraded = true;
+    if (!ids?.length || signal.aborted) return null;
+    // Releases of one song differ in Spicy (word-level on one, lines on another), so the
+    // candidates are compared and the first word-level sync wins.
+    let best: { lyrics: Lyrics; precision: number } | null = null;
+    for (const id of ids.slice(0, MAX_SPICY_CANDIDATES)) {
+      const result = await fetchSpicyLyrics(host, key, id, signal);
+      if (signal.aborted) return null;
+      if (result.ok) {
+        if (!fitsTrack(result.lyrics, track)) continue;
+        const precision = PRECISION[result.lyrics.Type];
+        if (!best || precision > best.precision) best = { lyrics: result.lyrics, precision };
+        if (result.lyrics.Type === "Syllable") break;
+        continue;
+      }
+      if (result.reason === "not-found") continue;
+      if (result.reason === "unauthorized" && invalidKey !== key) {
+        invalidKey = key;
+        host.notify(builtIn ? BUILT_IN_KEY_REFUSED_MESSAGE : INVALID_KEY_MESSAGE);
+      }
+      if (result.reason === "rate-limited") {
+        rateLimitedUntil = Date.now() + (result.retryAfterSec ?? DEFAULT_RETRY_AFTER_SEC) * 1000;
+      }
+      if (result.reason === "rate-limited" || result.reason === "error" || result.reason === "unauthorized") run.degraded = true;
+      break;
     }
-    if (result.reason === "rate-limited") {
-      rateLimitedUntil = Date.now() + (result.retryAfterSec ?? DEFAULT_RETRY_AFTER_SEC) * 1000;
-    }
-    if (result.reason === "rate-limited" || result.reason === "error" || result.reason === "unauthorized") run.degraded = true;
-    return null;
+    return best?.lyrics ?? null;
   }
 
   async function run(track: TrackInfo, settings: Settings, sig: string, signal: AbortSignal): Promise<RunResult> {

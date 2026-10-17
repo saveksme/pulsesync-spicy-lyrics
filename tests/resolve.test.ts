@@ -137,6 +137,63 @@ describe("Spicy keys", () => {
   });
 });
 
+// Spicy answers per Spotify release; one release of a song can have word-level sync while
+// another has only lines, so the resolver compares what each candidate gets.
+describe("Spicy candidates", () => {
+  const signal = () => new AbortController().signal;
+  const [A, B, C] = ["A".repeat(22), "B".repeat(22), "C".repeat(22)];
+  const syllable = (end: number) => ({
+    Body: {
+      Type: "Syllable",
+      source: "apple_music",
+      StartTime: 1,
+      Content: [
+        {
+          Type: "Vocal",
+          OppositeAligned: false,
+          Lead: { StartTime: 1, EndTime: end, Syllables: [{ Text: "hi", StartTime: 1, EndTime: end, IsPartOfWord: false }] },
+        },
+      ],
+    },
+  });
+  const line = { Body: { Type: "Line", source: "apple_music", StartTime: 1, Content: [{ Type: "Vocal", Text: "hi", StartTime: 1, EndTime: 2 }] } };
+  const plain = { Body: { Type: "Static", source: "spotify", Lines: [{ Text: "hi" }] } };
+  const spicyHost = (answers: Record<string, unknown>, asked: string[]) =>
+    fakeHost({
+      getSettings: () => ({ ...DEFAULT_SETTINGS, useLrclib: false, useYandex: false }),
+      fetch: fakeFetch({
+        "https://api.spicylyrics.org/": (url) => {
+          const id = url.pathname.split("/").pop()!;
+          asked.push(id);
+          return id in answers ? Response.json(answers[id]) : new Response('{"error":"lyrics_not_found"}', { status: 404 });
+        },
+      }),
+    });
+
+  it("takes word-level lyrics from whichever release has them, and stops there", async () => {
+    const asked: string[] = [];
+    const host = spicyHost({ [A]: line, [B]: syllable(2), [C]: syllable(2) }, asked);
+    const lyrics = await createLyricsResolver(host, { spotify: { candidates: async () => [A, B, C] } }).get(track, signal());
+    expect(lyrics!.Type).toBe("Syllable");
+    expect(asked).toEqual([A, B]);
+  });
+
+  it("keeps the most precise sync when no release has word-level lyrics", async () => {
+    const asked: string[] = [];
+    const host = spicyHost({ [B]: plain, [C]: line }, asked);
+    const lyrics = await createLyricsResolver(host, { spotify: { candidates: async () => [A, B, C] } }).get(track, signal());
+    expect(lyrics!.Type).toBe("Line");
+    expect(asked).toEqual([A, B, C]);
+  });
+
+  it("skips a release whose lyrics run past the end of the track", async () => {
+    const asked: string[] = [];
+    const host = spicyHost({ [A]: syllable(300), [B]: line }, asked);
+    const lyrics = await createLyricsResolver(host, { spotify: { candidates: async () => [A, B] } }).get(track, signal());
+    expect(lyrics!.Type).toBe("Line");
+  });
+});
+
 // A better source that failed for a moment must not decide the answer for days.
 describe("resolver after transient failures", () => {
   afterEach(() => vi.useRealTimers());

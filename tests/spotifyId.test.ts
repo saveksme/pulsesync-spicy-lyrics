@@ -11,6 +11,10 @@ const track = {
   isUgc: false,
 } as any;
 
+const noCreds = () => ({ clientId: "", clientSecret: "" });
+const A = "5TRPicyLGbAF2LGBFbHGvO";
+const B = "4lS5zzdpzIGvgXtw9tVRW9";
+
 describe("spotify id", () => {
   it("normalizes titles", () => {
     expect(normalizeTitle("Ёлка (feat. X) - Remastered 2011")).toBe("елка");
@@ -25,41 +29,68 @@ describe("spotify id", () => {
     expect(pickSpotifyCandidate(track, [items[0]])).toBeNull();
   });
 
-  it("uses ListenBrainz first and caches", async () => {
-    let calls = 0;
+  // Spotify has several releases of one song; only some carry word-level lyrics in Spicy,
+  // and which one ListenBrainz names depends on how the artists are spelled.
+  it("asks ListenBrainz about every artist spelling, with and without the album, in one request", async () => {
+    const duet = { ...track, title: "Flashing Lights", artists: ["Kanye West", "Dwele"], album: "Graduation" };
+    const bodies: unknown[] = [];
     const host = {
       storage: memoryStorage(),
       fetch: fakeFetch({
-        "https://labs.api.listenbrainz.org/": () => {
-          calls++;
-          return Response.json([{ spotify_track_ids: ["4wwqUoX7OweabhkpP2kaTS"] }]);
+        "https://labs.api.listenbrainz.org/": (_url, init) => {
+          bodies.push(JSON.parse(String(init?.body)));
+          return Response.json([
+            { spotify_track_ids: [A] },
+            { spotify_track_ids: [B] },
+            { spotify_track_ids: [A] },
+            { spotify_track_ids: [] },
+          ]);
         },
       }),
     };
-    const r = createSpotifyIdResolver(host, () => ({ clientId: "", clientSecret: "" }));
-    expect(await r.resolve(track)).toBe("4wwqUoX7OweabhkpP2kaTS");
-    expect(await r.resolve(track)).toBe("4wwqUoX7OweabhkpP2kaTS");
-    expect(calls).toBe(1);
+    const r = createSpotifyIdResolver(host, noCreds);
+    expect(await r.candidates(duet)).toEqual([A, B]);
+    expect(bodies).toEqual([
+      [
+        { artist_name: "Kanye West, Dwele", release_name: "Graduation", track_name: "Flashing Lights" },
+        { artist_name: "Kanye West", release_name: "Graduation", track_name: "Flashing Lights" },
+        { artist_name: "Kanye West, Dwele", release_name: "", track_name: "Flashing Lights" },
+        { artist_name: "Kanye West", release_name: "", track_name: "Flashing Lights" },
+      ],
+    ]);
+    expect(await r.candidates(duet)).toEqual([A, B]);
+    expect(bodies).toHaveLength(1);
   });
 
-  it("falls back to Spotify search with client credentials", async () => {
+  it("puts a Spotify search match first when client credentials are set", async () => {
     const host = {
       storage: memoryStorage(),
       fetch: fakeFetch({
-        "https://labs.api.listenbrainz.org/": () => Response.json([{ spotify_track_ids: [] }]),
+        "https://labs.api.listenbrainz.org/": () => Response.json([{ spotify_track_ids: [B] }]),
         "https://accounts.spotify.com/api/token": () => Response.json({ access_token: "T", expires_in: 3600 }),
         "https://api.spotify.com/v1/search": () =>
-          Response.json({
-            tracks: { items: [{ id: "sp1", name: "Хочешь?", duration_ms: 219000, artists: [{ name: "Земфира" }] }] },
-          }),
+          Response.json({ tracks: { items: [{ id: A, name: "Хочешь?", duration_ms: 219000, artists: [{ name: "Земфира" }] }] } }),
       }),
     };
     const r = createSpotifyIdResolver(host, () => ({ clientId: "id", clientSecret: "sec" }));
-    expect(await r.resolve(track)).toBe("sp1");
+    expect(await r.candidates(track)).toEqual([A, B]);
   });
 
-  it("returns null for UGC without network", async () => {
-    const r = createSpotifyIdResolver({ storage: memoryStorage(), fetch: fakeFetch({}) }, () => ({ clientId: "", clientSecret: "" }));
-    expect(await r.resolve({ ...track, isUgc: true })).toBeNull();
+  it("tells a failed lookup apart from no candidates", async () => {
+    const down = createSpotifyIdResolver(
+      { storage: memoryStorage(), fetch: fakeFetch({ "https://labs.api.listenbrainz.org/": () => new Response("busy", { status: 503 }) }) },
+      noCreds,
+    );
+    expect(await down.candidates(track)).toBeUndefined();
+    const empty = createSpotifyIdResolver(
+      { storage: memoryStorage(), fetch: fakeFetch({ "https://labs.api.listenbrainz.org/": () => Response.json([]) }) },
+      noCreds,
+    );
+    expect(await empty.candidates(track)).toEqual([]);
+  });
+
+  it("has no candidates for UGC, without network", async () => {
+    const r = createSpotifyIdResolver({ storage: memoryStorage(), fetch: fakeFetch({}) }, noCreds);
+    expect(await r.candidates({ ...track, isUgc: true })).toEqual([]);
   });
 });

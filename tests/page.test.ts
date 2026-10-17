@@ -40,6 +40,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// Spicy Lyrics starts with the NowBar closed (uiState $isNowBarOpen = false); cinema mode shows it.
+it("opens with the NowBar closed, like Spicy Lyrics, and shows it in cinema mode", async () => {
+  const page = newPage();
+  await Promise.resolve();
+  page.open();
+  const classes = document.getElementById("SpicyLyricsPage")!.classList;
+  expect(classes.contains("NowBarStatus__Closed")).toBe(true);
+  page.open("cinema");
+  expect(classes.contains("NowBarStatus__Open")).toBe(true);
+});
+
 it("opens empty, without a 'not found' notice, before anything plays", () => {
   const page = newPage();
   page.open();
