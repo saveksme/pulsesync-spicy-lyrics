@@ -14,9 +14,6 @@ export interface AppController {
   dispose(): void;
 }
 
-const HINT_KEY = "hint:spicyKey";
-const HINT_MESSAGE = "Добавьте ключ Spicy Lyrics в настройках аддона — будет пословная синхронизация";
-
 // Settings that decide where lyrics come from; the rest only change the look.
 const SOURCE_FIELDS = [
   "spicyApiKey",
@@ -38,7 +35,6 @@ export function startApp(host: Host, deps: { doc?: Document; resolver?: LyricsRe
   let settings = host.getSettings();
   let track: TrackInfo | null = null;
   let loading: AbortController | null = null;
-  let hinted = false;
   let disposed = false;
   clock.offsetMs = settings.timingOffsetMs;
 
@@ -74,18 +70,6 @@ export function startApp(host: Host, deps: { doc?: Document; resolver?: LyricsRe
     );
   }
 
-  async function hintAboutKey(): Promise<void> {
-    if (hinted || !settings.useSpicy || settings.spicyApiKey.trim()) return;
-    hinted = true;
-    try {
-      if (await host.storage.get<boolean>(HINT_KEY)) return;
-      await host.storage.set(HINT_KEY, true);
-    } catch {
-      return;
-    }
-    if (!disposed) host.notify(HINT_MESSAGE);
-  }
-
   const offPlayer = host.onPlayer(guarded(host.log, "player update", (state) => {
     if (disposed) return;
     const next = state.track;
@@ -117,7 +101,6 @@ export function startApp(host: Host, deps: { doc?: Document; resolver?: LyricsRe
     open(mode) {
       if (disposed) return;
       page.open(mode);
-      void hintAboutKey();
     },
     close() {
       page.close();

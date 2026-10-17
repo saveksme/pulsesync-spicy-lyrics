@@ -1,6 +1,6 @@
 import type { AddonApi } from "@pulsesync/addon-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createSdkHost, mapSnapshot, sliderVolume } from "../src/host/sdkHost";
+import { createSdkHost, mapSnapshot, refreshPlayerBarSoon, sliderVolume } from "../src/host/sdkHost";
 
 it("maps snapshots with numeric or object progress", () => {
   expect(mapSnapshot({ status: "playing", progress: { position: 12.5, duration: 200 }, track: { id: "1", title: "t" }, volume: 0.5 }).progressSec).toBe(12.5);
@@ -88,6 +88,88 @@ describe("createSdkHost", () => {
     pushSettings({ lineBlur: { value: false, default: true } });
     expect(seen).toEqual([false]);
     expect(host.getSettings().lineBlur).toBe(false);
+  });
+
+  // Yandex Music answers a track without lyrics with an HTTP 404 error, which is not a failure.
+  it("treats a 404 from Yandex Music's lyrics resource as no lyrics", async () => {
+    const getLyrics = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Request failed with status code 404"))
+      .mockRejectedValueOnce(new Error("Request failed with status code 502"));
+    const { api } = fakeApi({ resources: { getLyrics } });
+    const host = createSdkHost(api);
+    await expect(host.getYandexLyrics("1", "LRC")).resolves.toBeNull();
+    await expect(host.getYandexLyrics("1", "LRC")).rejects.toThrow("502");
+  });
+
+  // After an add-on reload Yandex Music keeps the old player-bar button until the bar redraws.
+  it("asks PulseSync to redraw the player bar once the add-on has started", () => {
+    vi.useFakeTimers();
+    const refreshPlayerBar = vi.fn(async () => {
+      throw new Error("not available");
+    });
+    const { api, calls } = fakeApi();
+    (api.client as unknown as Record<string, unknown>).refreshPlayerBar = refreshPlayerBar;
+    (api as unknown as Record<string, unknown>).setTimeout = (fn: () => void, ms: number) => {
+      const id = setTimeout(fn, ms);
+      return () => clearTimeout(id);
+    };
+    refreshPlayerBarSoon(api);
+    expect(refreshPlayerBar).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1000);
+    expect(refreshPlayerBar).toHaveBeenCalledTimes(1);
+    expect(calls.warn).not.toHaveBeenCalledWith(expect.stringContaining("refresh"));
+  });
+
+  it("sends opaque-origin requests from a data: worker and stops it with the add-on", async () => {
+    const created: Array<{ url: string; terminated: boolean; reply?: (data: unknown) => void }> = [];
+    vi.stubGlobal(
+      "Worker",
+      class {
+        private onMessage?: (event: { data: unknown }) => void;
+        record: { url: string; terminated: boolean; reply?: (data: unknown) => void };
+        constructor(url: string) {
+          this.record = { url, terminated: false };
+          created.push(this.record);
+        }
+        addEventListener(type: string, listener: (event: { data: unknown }) => void) {
+          if (type === "message") this.onMessage = listener;
+        }
+        postMessage(message: { id: number }) {
+          this.onMessage?.({ data: { id: message.id, status: 200, body: '{"ok":true}' } });
+        }
+        terminate() {
+          this.record.terminated = true;
+        }
+      },
+    );
+    const cleanups: Array<() => void> = [];
+    const { api } = fakeApi({ onCleanup: (fn: () => void) => cleanups.push(fn) });
+    const host = createSdkHost(api);
+    const response = await host.fetchOpaque!("https://api.spicylyrics.org/v1/lyrics/x", { headers: { Authorization: "Bearer k" } });
+    expect(await response.json()).toEqual({ ok: true });
+    await host.fetchOpaque!("https://api.spicylyrics.org/v1/lyrics/y");
+    expect(created).toHaveLength(1);
+    expect(created[0].url.startsWith("data:text/javascript,")).toBe(true);
+    for (const cleanup of cleanups) cleanup();
+    expect(created[0].terminated).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it("falls back to PulseSync's fetch when a worker cannot start", async () => {
+    vi.stubGlobal(
+      "Worker",
+      class {
+        constructor() {
+          throw new Error("blocked");
+        }
+      },
+    );
+    const netFetch = vi.fn(async () => new Response("{}"));
+    const { api } = fakeApi({ net: { fetch: netFetch }, onCleanup: () => () => {} });
+    await createSdkHost(api).fetchOpaque!("https://api.spicylyrics.org/v1/lyrics/x");
+    expect(netFetch).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
   });
 
   it("delivers the current snapshot even if no change event comes", async () => {

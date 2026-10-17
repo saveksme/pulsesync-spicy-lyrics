@@ -2,6 +2,7 @@ import type { AddonApi, StorageValue } from "@pulsesync/addon-sdk";
 import type { Host, PlayerState } from "../core/host";
 import { toTrackInfo } from "../core/track";
 import { normalizeSettings } from "../settings";
+import { createOpaqueFetcher, type OpaqueFetcher } from "./opaqueFetch";
 
 // Every client call is an RPC and PulseSync allows 300 of them per 10 s, so a
 // volume drag (one event per mouse move) is coalesced to one call per interval.
@@ -26,6 +27,23 @@ export function mapSnapshot(snapshot: unknown): PlayerState {
     track: toTrackInfo(s.track),
     volume: sliderVolume(s.volume),
   };
+}
+
+// Yandex Music answers a track without lyrics with an HTTP 404 error; that is "no lyrics",
+// while anything else (5xx, network) stays a failure the resolver may retry.
+const isNotFound = (error: unknown) => error instanceof Error && /status code 404\b/.test(error.message);
+
+// After an add-on reload Yandex Music keeps drawing the previous player-bar button (bound to
+// the old instance) until the bar redraws, so ask PulseSync for one redraw after start.
+const PLAYER_BAR_REFRESH_DELAY_MS = 500;
+export function refreshPlayerBarSoon(api: AddonApi): void {
+  api.setTimeout(() => {
+    try {
+      void Promise.resolve(api.client.refreshPlayerBar()).catch(() => undefined);
+    } catch {
+      // Hosts without refreshPlayerBar keep the old behaviour.
+    }
+  }, PLAYER_BAR_REFRESH_DELAY_MS);
 }
 
 // PulseSync storage refuses undefined and non-finite numbers; a JSON round trip drops them.
@@ -55,14 +73,33 @@ export function createSdkHost(api: AddonApi): Host {
     call("setVolume", () => api.client.setVolume(volume));
   };
 
+  // Started on the first Spicy request and stopped with the add-on.
+  let opaque: OpaqueFetcher | null | undefined;
+  const opaqueFetcher = () => {
+    if (opaque === undefined) {
+      opaque = createOpaqueFetcher((source) => new Worker(`data:text/javascript,${encodeURIComponent(source)}`));
+      if (opaque) api.onCleanup(() => opaque?.dispose());
+      else log.warn("[spicy-lyrics] opaque-origin worker unavailable, Spicy requests use the page origin");
+    }
+    return opaque;
+  };
+
   return {
     fetch: (url, init) => api.net.fetch(url, init),
+    fetchOpaque: (url, init) => {
+      const fetcher = opaqueFetcher();
+      return fetcher ? fetcher.fetch(url, init) : api.net.fetch(url, init);
+    },
     storage: {
       get: (key) => api.storage.get(key),
       set: (key, value) => api.storage.set(key, toStorageValue(value)),
       remove: (key) => api.storage.remove(key),
     },
-    getYandexLyrics: (trackId, format) => api.resources.getLyrics(trackId, format),
+    getYandexLyrics: (trackId, format) =>
+      api.resources.getLyrics(trackId, format).catch((error: unknown) => {
+        if (isNotFound(error)) return null;
+        throw error;
+      }),
     onPlayer(listener) {
       let received = false;
       let active = true;

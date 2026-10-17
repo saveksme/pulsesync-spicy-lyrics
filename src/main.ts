@@ -1,6 +1,6 @@
 import { defineAddon } from "@pulsesync/addon-sdk";
 import { type AppController, startApp } from "./app/App";
-import { createSdkHost } from "./host/sdkHost";
+import { createSdkHost, refreshPlayerBarSoon } from "./host/sdkHost";
 import { settingsDefinition } from "./settingsDefinition";
 import "./styles";
 
@@ -23,6 +23,7 @@ export default defineAddon({
   start(api) {
     const current = startApp(createSdkHost(api));
     app = current;
+    refreshPlayerBarSoon(api);
     return () => {
       current.dispose();
       if (app === current) app = null;

@@ -20,6 +20,9 @@ export interface HostStorage {
 // implements it in host/sdkHost.ts, the preview with a mock.
 export interface Host {
   fetch(url: string, init?: HostFetchInit): Promise<Response>;
+  // Optional: a fetch whose requests carry Origin: null instead of Yandex Music's
+  // music-application://desktop (see host/opaqueFetch.ts). Used for Spicy Lyrics.
+  fetchOpaque?(url: string, init?: HostFetchInit): Promise<Response>;
   storage: HostStorage;
   getYandexLyrics(trackId: string, format: "LRC" | "TEXT"): Promise<string | null>;
   onPlayer(listener: (state: PlayerState) => void): () => void;

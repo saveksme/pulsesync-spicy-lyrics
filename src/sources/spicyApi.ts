@@ -14,6 +14,18 @@ import type {
 // Spicy Lyrics public API: https://developers.spicylyrics.org (GET /v1/lyrics/{spotifyTrackId}).
 export const SPICY_API = "https://api.spicylyrics.org/v1/lyrics/";
 
+// This add-on's publishable ("client access") key from developers.spicylyrics.org.
+// It is public by design: Spicy Lyrics issues sl_pk_ keys for code shipped to users and
+// limits them per viewer. Yandex Music sends Origin: music-application://desktop, which
+// Spicy cannot allowlist, so requests go out from a data: worker with Origin: null, the
+// origin this key allows (host/opaqueFetch.ts). A key in the settings takes its place.
+export const BUILT_IN_SPICY_KEY = "sl_pk_32klmKAfIgnlV31Fwj5L0YFM0JzMIEi_RQCEhtGIcMA";
+
+export function spicyKeyFor(settings: { spicyApiKey: string }): { key: string; builtIn: boolean } {
+  const own = settings.spicyApiKey.trim();
+  return own ? { key: own, builtIn: false } : { key: BUILT_IN_SPICY_KEY, builtIn: true };
+}
+
 export type SpicyResult =
   | { ok: true; lyrics: Lyrics }
   | { ok: false; reason: "no-key" | "not-found" | "unauthorized" | "rate-limited" | "error"; retryAfterSec?: number };
@@ -134,7 +146,7 @@ export function normalizeSpicyBody(body: unknown): Lyrics | null {
 }
 
 export async function fetchSpicyLyrics(
-  host: Pick<Host, "fetch">,
+  host: Pick<Host, "fetch" | "fetchOpaque">,
   key: string,
   spotifyId: string,
   signal?: AbortSignal,
@@ -142,13 +154,12 @@ export async function fetchSpicyLyrics(
   const token = key.trim();
   if (!token) return { ok: false, reason: "no-key" };
 
+  const url = `${SPICY_API}${encodeURIComponent(spotifyId)}`;
+  const init = { headers: { Authorization: `Bearer ${token}` }, timeoutMs: 10_000, signal };
   let response: Response;
   try {
-    response = await host.fetch(`${SPICY_API}${encodeURIComponent(spotifyId)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      timeoutMs: 10_000,
-      signal,
-    });
+    // Spicy allowlists Origin: null for this add-on's key; the page's own origin is refused.
+    response = await (host.fetchOpaque ? host.fetchOpaque(url, init) : host.fetch(url, init));
   } catch {
     return { ok: false, reason: "error" };
   }

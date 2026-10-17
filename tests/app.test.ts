@@ -23,7 +23,6 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-const HINT = "Добавьте ключ Spicy Lyrics в настройках аддона — будет пословная синхронизация";
 
 describe("App", () => {
   it("drops stale lyrics when tracks switch quickly", async () => {
@@ -103,29 +102,15 @@ describe("App", () => {
     app.dispose();
   });
 
-  it("hints about the Spicy key once per install, never when a key is set", async () => {
+  // Word sync works out of the box with the add-on's own publishable key.
+  it("never asks the user to add a Spicy key", async () => {
     const notify = vi.fn();
-    const storage = memoryStorage();
-    const first = startApp(fakeHost({ notify, storage }));
-    first.open();
-    first.close();
-    first.open();
-    await vi.waitFor(() => expect(notify).toHaveBeenCalledTimes(1));
-    expect(notify).toHaveBeenCalledWith(HINT);
-    first.dispose();
-
-    const second = startApp(fakeHost({ notify, storage }));
-    second.open();
+    const app = startApp(fakeHost({ notify, storage: memoryStorage() }));
+    app.open();
+    app.close();
+    app.open();
     await settle();
-    expect(notify).toHaveBeenCalledTimes(1);
-    second.dispose();
-
-    const keyed = vi.fn();
-    const third = startApp(fakeHost({ notify: keyed, getSettings: () => ({ ...DEFAULT_SETTINGS, spicyApiKey: "sl_sk_test" }) }));
-    third.open();
-    await settle();
-    expect(keyed).not.toHaveBeenCalled();
-    third.dispose();
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it("ignores player events after dispose", async () => {

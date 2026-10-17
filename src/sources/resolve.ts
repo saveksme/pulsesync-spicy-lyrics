@@ -2,7 +2,7 @@ import type { Host } from "../core/host";
 import type { TrackInfo } from "../core/track";
 import type { Settings } from "../core/types";
 import { fetchLrclib, lrclibToLyrics } from "./lrclib";
-import { fetchSpicyLyrics } from "./spicyApi";
+import { fetchSpicyLyrics, spicyKeyFor } from "./spicyApi";
 import { createSpotifyIdResolver, type SpotifyIdResolver } from "./spotifyId";
 import type { Lyrics } from "./types";
 import { fetchYandexPlain, fetchYandexSynced } from "./yandex";
@@ -27,6 +27,8 @@ const STORED_LIMIT = 40;
 const INDEX_KEY = "lyrics:index";
 const DEFAULT_RETRY_AFTER_SEC = 60;
 const INVALID_KEY_MESSAGE = "Ключ Spicy Lyrics недействителен — использую другие источники";
+export const BUILT_IN_KEY_REFUSED_MESSAGE =
+  "Spicy Lyrics сейчас не принимает встроенный ключ — показываю тексты Яндекс Музыки и LRCLIB. Можно указать свой ключ в настройках аддона.";
 
 export function sourceSteps(settings: Settings): StepId[] {
   const order =
@@ -34,7 +36,7 @@ export function sourceSteps(settings: Settings): StepId[] {
       ? (["yandexSynced", ...BEST_ORDER.filter((step) => step !== "yandexSynced")] as StepId[])
       : BEST_ORDER;
   return order.filter((step) => {
-    if (step === "spicy") return settings.useSpicy && settings.spicyApiKey.trim() !== "";
+    if (step === "spicy") return settings.useSpicy;
     if (step.startsWith("lrclib")) return settings.useLrclib;
     return settings.useYandex;
   });
@@ -54,13 +56,16 @@ function fingerprint(text: string): string {
 function sourcesSignature(settings: Settings): string {
   return [
     sourceSteps(settings).join(","),
-    fingerprint(settings.spicyApiKey.trim()),
+    fingerprint(spicyKeyFor(settings).key),
     fingerprint(`${settings.spotifyClientId}:${settings.spotifyClientSecret}`),
   ].join("|");
 }
 
+// v2: entries from builds before the built-in key may hold fallbacks cached while Spicy was off.
+const STORED_VERSION = 2;
+
 interface StoredLyrics {
-  v: 1;
+  v: typeof STORED_VERSION;
   at: number;
   sig: string;
   lyrics: Lyrics;
@@ -91,7 +96,7 @@ export function createLyricsResolver(host: Host, deps: { spotify?: SpotifyIdReso
 
   async function readStored(trackId: string, sig: string): Promise<Lyrics | null> {
     const entry = await host.storage.get<StoredLyrics>(`lyrics:${trackId}`).catch(() => undefined);
-    if (!entry || entry.v !== 1 || entry.sig !== sig || Date.now() - entry.at > HIT_TTL_MS) return null;
+    if (!entry || entry.v !== STORED_VERSION || entry.sig !== sig || Date.now() - entry.at > HIT_TTL_MS) return null;
     return entry.lyrics;
   }
 
@@ -100,7 +105,7 @@ export function createLyricsResolver(host: Host, deps: { spotify?: SpotifyIdReso
       const index = ((await host.storage.get<string[]>(INDEX_KEY)) ?? []).filter((id) => id !== trackId);
       index.push(trackId);
       while (index.length > STORED_LIMIT) await host.storage.remove(`lyrics:${index.shift()}`);
-      await host.storage.set(`lyrics:${trackId}`, { v: 1, at: Date.now(), sig, lyrics } satisfies StoredLyrics);
+      await host.storage.set(`lyrics:${trackId}`, { v: STORED_VERSION, at: Date.now(), sig, lyrics } satisfies StoredLyrics);
       await host.storage.set(INDEX_KEY, index);
     } catch (error) {
       host.log.warn("[spicy-lyrics] could not store lyrics", error);
@@ -108,8 +113,13 @@ export function createLyricsResolver(host: Host, deps: { spotify?: SpotifyIdReso
   }
 
   async function spicyStep(track: TrackInfo, settings: Settings, signal: AbortSignal, run: { degraded: boolean }): Promise<Lyrics | null> {
-    const key = settings.spicyApiKey.trim();
-    if (!key || key === invalidKey) return null;
+    const { key, builtIn } = spicyKeyFor(settings);
+    // A refused key may be fixed any moment (allowlist, new key), so what the fallbacks
+    // find meanwhile is not stored.
+    if (key === invalidKey) {
+      run.degraded = true;
+      return null;
+    }
     if (Date.now() < rateLimitedUntil) {
       run.degraded = true;
       return null;
@@ -121,12 +131,12 @@ export function createLyricsResolver(host: Host, deps: { spotify?: SpotifyIdReso
     if (result.ok) return result.lyrics;
     if (result.reason === "unauthorized" && invalidKey !== key) {
       invalidKey = key;
-      host.notify(INVALID_KEY_MESSAGE);
+      host.notify(builtIn ? BUILT_IN_KEY_REFUSED_MESSAGE : INVALID_KEY_MESSAGE);
     }
     if (result.reason === "rate-limited") {
       rateLimitedUntil = Date.now() + (result.retryAfterSec ?? DEFAULT_RETRY_AFTER_SEC) * 1000;
     }
-    if (result.reason === "rate-limited" || result.reason === "error") run.degraded = true;
+    if (result.reason === "rate-limited" || result.reason === "error" || result.reason === "unauthorized") run.degraded = true;
     return null;
   }
 

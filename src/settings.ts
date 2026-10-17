@@ -7,9 +7,9 @@ export type { Settings } from "./core/types.ts";
 export const SETTINGS_SCHEMA = {
   spicyApiKey: {
     type: "text",
-    name: "Ключ Spicy Lyrics API",
+    name: "Свой ключ Spicy Lyrics API (необязательно)",
     description:
-      "Бесплатный ключ с developers.spicylyrics.org (Secret key). Даёт пословную синхронизацию из библиотеки Spicy Lyrics. Без ключа используются тексты Яндекс Музыки и LRCLIB.",
+      "Пословная синхронизация из Spicy Lyrics работает сразу: у аддона есть свой ключ. Свой нужен, только если встроенный упрётся в лимиты: создайте на developers.spicylyrics.org публичный ключ (sl_pk_…) и добавьте в его Allowed origins значение null.",
     default: "",
   },
   spotifyClientId: {

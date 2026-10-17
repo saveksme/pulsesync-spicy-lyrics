@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fetchSpicyLyrics, normalizeSpicyBody } from "../src/sources/spicyApi";
 import { fakeFetch } from "./helpers/fakeHost";
 
@@ -63,6 +63,17 @@ describe("spicy api", () => {
     expect(l.UploadAttribution.Uploader.username).toBe("up");
     expect(normalizeSpicyBody({ Type: "Line", Content: [] })).toBeNull();
     expect(normalizeSpicyBody({ Type: "Static", Lines: [{ Text: "a" }], source: "spotify" })!.Type).toBe("Static");
+  });
+
+  // Yandex Music's page sends Origin: music-application://desktop, which Spicy cannot allowlist;
+  // the host's opaque-origin fetch sends Origin: null instead.
+  it("sends Spicy requests through the host's opaque-origin fetch when it has one", async () => {
+    const fetch = vi.fn(async () => Response.json({ Body: syllableBody }));
+    const fetchOpaque = vi.fn(async () => Response.json({ Body: syllableBody }));
+    const result = await fetchSpicyLyrics({ fetch, fetchOpaque }, "sl_pk_x", "x".repeat(22));
+    expect(result.ok).toBe(true);
+    expect(fetchOpaque).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   // PulseSync's isolated world throws on javascript: hrefs, which would break the credits.
