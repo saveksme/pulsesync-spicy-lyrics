@@ -1,0 +1,44 @@
+{
+  "name": "pulsesync-spicy-lyrics",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spicy Lyrics for Yandex Music — PulseSync web-addon",
+  "license": "AGPL-3.0-only",
+  "author": "saveksme",
+  "homepage": "https://github.com/saveksme/pulsesync-spicy-lyrics#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saveksme/pulsesync-spicy-lyrics.git"
+  },
+  "bugs": {
+    "url": "https://github.com/saveksme/pulsesync-spicy-lyrics/issues"
+  },
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch --mode development",
+    "deliver": "node scripts/deliver.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite --config vite.preview.config.ts"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@kawarp/core": "1.3.1",
+    "@pulsesync/addon-sdk": "0.16.0",
+    "cubic-spline": "3.0.3",
+    "d3-ease": "3.0.1"
+  },
+  "devDependencies": {
+    "@types/d3-ease": "3.0.2",
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "happy-dom": "21.0.3",
+    "react": "19.3.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.4",
+    "vitest": "5.0.5"
+  }
+}

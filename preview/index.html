@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Spicy Lyrics — превью</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #121212;
+        color: #ddd;
+        font: 14px system-ui, sans-serif;
+        overflow: hidden;
+      }
+      .Layout {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        grid-template-rows: 1fr 72px;
+        height: 100%;
+      }
+      .Navbar {
+        grid-row: 1 / 3;
+        background: #0c0c0c;
+        padding: 16px;
+        line-height: 1.8;
+      }
+      .CommonLayout_content__preview {
+        background: #1b1b1b;
+        padding: 24px;
+      }
+      .PlayerBar {
+        background: #181818;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 16px;
+        border-top: 1px solid #2a2a2a;
+      }
+      button {
+        background: #2a2a2a;
+        color: #eee;
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+      kbd {
+        background: #2a2a2a;
+        border-radius: 4px;
+        padding: 0 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="Layout">
+      <nav class="Navbar">Яндекс Музыка<br />(макет)</nav>
+      <main class="CommonLayout_content__preview">
+        <p>Контент приложения.</p>
+        <p>
+          <kbd>Space</kbd> пауза, <kbd>←</kbd>/<kbd>→</kbd> перемотка, <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> слоги/строки/статика,
+          <kbd>s</kbd> простой режим, <kbd>b</kbd> фон, <kbd>t</kbd> сменить обложку, <kbd>o</kbd> открыть/закрыть
+        </p>
+      </main>
+      <div class="PlayerBar"><button id="open">Spicy Lyrics</button></div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

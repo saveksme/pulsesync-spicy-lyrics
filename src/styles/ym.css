@@ -1,0 +1,165 @@
+/* Yandex Music host for the Spicy Lyrics page. The overlay sits above the app:
+   in page mode over the content area (the YM navbar and player bar stay usable),
+   in cinema mode over the whole window. */
+
+#SpicyLyricsHost {
+  position: fixed;
+  z-index: 2147482000;
+  overflow: hidden;
+  background: #0b0b0d;
+  color: #fff;
+  contain: strict;
+  isolation: isolate;
+  opacity: 0;
+  transform: translateY(1.5%) scale(0.995);
+  transition:
+    opacity 0.32s cubic-bezier(0.23, 1, 0.32, 1),
+    transform 0.42s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+#SpicyLyricsHost.Visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #SpicyLyricsHost {
+    transform: none;
+    transition: opacity 0.2s linear;
+  }
+}
+
+#SpicyLyricsHost *,
+#SpicyLyricsHost *::before,
+#SpicyLyricsHost *::after {
+  box-sizing: border-box;
+}
+
+/* Spicy's font, with Yandex Sans for scripts it does not cover (Cyrillic). */
+#SpicyLyricsPage.UseSpicyFont,
+#SpicyLyricsPage.UseSpicyFont * {
+  font-family: SpicyLyrics, var(--ym-font-text, "YS Text"), "YS Text", "Noto Sans Georgian", "VazirmatnRegular", sans-serif !important;
+}
+
+#SpicyLyricsPage:not(.UseSpicyFont),
+#SpicyLyricsPage:not(.UseSpicyFont) * {
+  font-family: var(--ym-font-text, "YS Text"), "YS Text", sans-serif;
+}
+
+#SpicyLyricsPage .ContentBox {
+  position: relative;
+}
+
+/* SimpleBar is not used: the lyrics scroll natively, smooth unless jumping. */
+#SpicyLyricsPage .LyricsContainer .LyricsContent {
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+
+#SpicyLyricsPage .LyricsContainer .LyricsContent.InstantScroll {
+  scroll-behavior: auto !important;
+}
+
+#SpicyLyricsPage .LyricsContainer .LyricsContent::-webkit-scrollbar {
+  display: none;
+}
+
+/* NowBar spacing (from Spicy's ContentBox.css, without Compact mode). */
+#SpicyLyricsPage.NowBarStatus__Open {
+  --LyricsLeftSidePadding: calc(50cqw - var(--NowBarRightSpacing) * 0.3);
+  --LyricsRightSidePadding: calc(var(--NowBarLeftSpacing) * 0.35);
+}
+
+#SpicyLyricsPage:not(.Fullscreen).NowBarStatus__Open {
+  --NowBarLeftSpacing: calc(calc(50cqw - var(--NowBarWidth) - var(--NowBarRightSpacing)) * 0.7);
+  --LyricsLeftSidePadding: calc(calc(50cqw - var(--NowBarRightSpacing) * 0.3) * 0.9);
+}
+
+#SpicyLyricsPage .ContentBox .NowBar.Active.LeftSide + .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer,
+#SpicyLyricsPage .ContentBox .NowBar.Active.LeftSide + .LyricsContainer .LyricsContent .LyricsNotice,
+#SpicyLyricsPage .ContentBox .NowBar:not(.Active) + .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer,
+#SpicyLyricsPage .ContentBox .NowBar:not(.Active) + .LyricsContainer .LyricsContent .LyricsNotice {
+  padding-left: var(--LyricsLeftSidePadding) !important;
+  padding-right: var(--LyricsRightSidePadding) !important;
+}
+
+#SpicyLyricsPage .ContentBox .NowBar.Active.RightSide + .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer,
+#SpicyLyricsPage .ContentBox .NowBar.Active.RightSide + .LyricsContainer .LyricsContent .LyricsNotice {
+  padding-right: var(--LyricsLeftSidePadding) !important;
+  padding-left: calc(var(--LyricsRightSidePadding) * 1.45) !important;
+}
+
+/* The last line can reach the centre. */
+#SpicyLyricsPage .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer {
+  padding-bottom: 50cqh;
+}
+
+#SpicyLyricsPage .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Background layers sit under the NowBar and lyrics. */
+#SpicyLyricsPage .ContentBox > .spicy-dynamic-bg {
+  z-index: 0;
+}
+
+#SpicyLyricsPage .ContentBox > :not(.spicy-dynamic-bg) {
+  z-index: 1;
+}
+
+#SpicyLyricsPage .ContentBox > .NowBar {
+  z-index: 10;
+}
+
+#SpicyLyricsPage .ContentBox > .ViewControls {
+  z-index: 101;
+}
+
+#SpicyLyricsPage.NoBackground .ContentBox {
+  background: #121212;
+}
+
+/* "No lyrics" and other notices, in the lyrics column. */
+#SpicyLyricsPage .LyricsContainer .LyricsContent .LyricsNotice {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  gap: 0.6em;
+  color: #fff;
+}
+
+#SpicyLyricsPage .LyricsContainer .LyricsContent .LyricsNotice .NoticeTitle {
+  font-size: clamp(1.4rem, calc(1cqw * 5), 2.6rem);
+  font-weight: 800 !important;
+  opacity: 0.92;
+}
+
+#SpicyLyricsPage .LyricsContainer .LyricsContent .LyricsNotice .NoticeText {
+  font-size: clamp(0.9rem, calc(1cqw * 2.2), 1.2rem);
+  font-weight: 600 !important;
+  opacity: 0.55;
+  max-width: 34em;
+  line-height: 1.4;
+}
+
+#SpicyLyricsPage .ViewControls .ViewControl svg,
+#SpicyLyricsPage .PlaybackControl svg {
+  pointer-events: none;
+}
+
+/* Line blur off (setting): Spicy's HideLineBlur, but permanent. */
+#SpicyLyricsPage.NoLineBlur .LyricsContainer .LyricsContent .line {
+  --BlurAmount: 0px !important;
+}
+
+/* Spicy references this cover-swap animation without defining it; a fade. */
+@keyframes MB_anim_enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
