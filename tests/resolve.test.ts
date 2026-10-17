@@ -227,6 +227,7 @@ describe("resolver after transient failures", () => {
     expect(await host.storage.get("lyrics:42")).toBeDefined();
   });
 
+  // With nothing else to show, a busy LRCLIB is asked a few times before the miss.
   it("does not remember a miss caused by an outage for ten minutes", async () => {
     vi.useFakeTimers();
     const lrclibCalls = vi.fn();
@@ -240,11 +241,15 @@ describe("resolver after transient failures", () => {
       }),
     });
     const r = createLyricsResolver(host);
-    expect(await r.get(track, signal())).toBeNull();
-    const first = lrclibCalls.mock.calls.length;
+    const first = r.get(track, signal());
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(await first).toBeNull();
+    const calls = lrclibCalls.mock.calls.length;
     await vi.advanceTimersByTimeAsync(61_000);
-    expect(await r.get(track, signal())).toBeNull();
-    expect(lrclibCalls.mock.calls.length).toBeGreaterThan(first);
+    const second = r.get(track, signal());
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(await second).toBeNull();
+    expect(lrclibCalls.mock.calls.length).toBeGreaterThan(calls);
   });
 
   it("keeps a fallback out of the stored cache when the Spicy API has a server error", async () => {
@@ -271,5 +276,77 @@ describe("resolver after transient failures", () => {
     await vi.advanceTimersByTimeAsync(6_000);
     expect((await pending)!.source).toBe("yandex");
     expect(await host.storage.get("lyrics:42")).toBeUndefined();
+  });
+});
+
+// Yandex Music shows no lyrics in some regions; LRCLIB, often busy, is then the main source
+// of synced lyrics and is worth waiting for. Where Yandex Music has synced lyrics, it is not.
+describe("resolver while LRCLIB is busy", () => {
+  afterEach(() => vi.useRealTimers());
+  const signal = () => new AbortController().signal;
+  const withoutSpicy = () => ({ ...DEFAULT_SETTINGS, useSpicy: false });
+  const busy = () => new Response('{"name":"ServerOverloaded"}', { status: 503, headers: { "Retry-After": "1" } });
+  const synced = { id: 5, trackName: "T", artistName: "A", duration: 100, instrumental: false, syncedLyrics: lrc, plainLyrics: "a\nb" };
+
+  it("waits for a busy LRCLIB when Yandex Music has no lyrics", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    const host = fakeHost({
+      getSettings: withoutSpicy,
+      fetch: fakeFetch({ "https://lrclib.net/api/get": () => (++calls <= 4 ? busy() : Response.json(synced)) }),
+    });
+    const pending = createLyricsResolver(host).get(track, signal());
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await pending).toMatchObject({ Type: "Line", source: "lrclib" });
+    expect(await host.storage.get("lyrics:42")).toBeDefined();
+  });
+
+  it("shows Yandex Music's synced lyrics at once instead of waiting for a busy LRCLIB", async () => {
+    vi.useFakeTimers();
+    const host = fakeHost({
+      getSettings: withoutSpicy,
+      getYandexLyrics: async (_id: string, format: "LRC" | "TEXT") => (format === "LRC" ? lrc : null),
+      fetch: fakeFetch({ "https://lrclib.net/": () => busy() }),
+    });
+    expect((await createLyricsResolver(host).get(track, signal()))!.source).toBe("yandex");
+  });
+
+  it("gives up on external sources after a while when nothing else has lyrics", async () => {
+    vi.useFakeTimers();
+    const host = fakeHost({ getSettings: withoutSpicy, fetch: fakeFetch({ "https://lrclib.net/": () => new Promise<Response>(() => {}) }) });
+    let settled = false;
+    const pending = createLyricsResolver(host)
+      .get(track, signal())
+      .finally(() => {
+        settled = true;
+      });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await pending).toBeNull();
+  });
+});
+
+// Spicy falls back to Spotify's unsynced text; synced lyrics from another source come first.
+describe("Spicy unsynced lyrics", () => {
+  const signal = () => new AbortController().signal;
+  const spotify = { candidates: async () => ["A".repeat(22)] };
+  const unsynced = { Body: { Type: "Static", source: "spotify", Lines: [{ Text: "hi" }] } };
+  const hostWith = (lrclib: () => Response) =>
+    fakeHost({
+      fetch: fakeFetch({
+        "https://api.spicylyrics.org/": () => Response.json(unsynced),
+        "https://lrclib.net/": lrclib,
+      }),
+    });
+
+  it("does not let Spicy's unsynced text hide synced lyrics from elsewhere", async () => {
+    const host = hostWith(() => Response.json({ id: 5, trackName: "T", artistName: "A", duration: 100, instrumental: false, syncedLyrics: lrc }));
+    expect(await createLyricsResolver(host, { spotify }).get(track, signal())).toMatchObject({ Type: "Line", source: "lrclib" });
+  });
+
+  it("still shows Spicy's unsynced text when nothing is synced", async () => {
+    const host = hostWith(() => new Response("{}", { status: 404 }));
+    expect(await createLyricsResolver(host, { spotify }).get(track, signal())).toMatchObject({ Type: "Static", source: "spotify" });
   });
 });

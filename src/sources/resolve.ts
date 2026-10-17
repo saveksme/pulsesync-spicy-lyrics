@@ -21,8 +21,11 @@ const MISS_TTL_MS = 10 * 60 * 1000;
 // kept for a minute and never stored, so the better source gets another chance.
 const DEGRADED_TTL_MS = 60 * 1000;
 // Spicy (with its Spotify ID lookup) and LRCLIB share this much time per track before
-// Yandex Music's own lyrics get their turn.
+// Yandex Music's own synced lyrics are shown instead...
 const EXTERNAL_BUDGET_MS = 6000;
+// ...and this much when Yandex Music has no synced lyrics (it shows none in some regions),
+// so a busy LRCLIB gets the time its retries need.
+const EXTERNAL_LIMIT_MS = 20_000;
 const STORED_LIMIT = 40;
 const INDEX_KEY = "lyrics:index";
 const DEFAULT_RETRY_AFTER_SEC = 60;
@@ -79,7 +82,9 @@ function sourcesSignature(settings: Settings): string {
 
 // v3: earlier builds cached fallbacks while Spicy was off, or a line-level Spicy sync where
 // another release of the song has a word-level one.
-const STORED_VERSION = 3;
+// v4: earlier builds cached unsynced text where LRCLIB has a synced upload (an untimed
+// lyricsfile counted as synced, busy answers were not retried) or Spicy had only text.
+const STORED_VERSION = 4;
 
 interface StoredLyrics {
   v: typeof STORED_VERSION;
@@ -175,26 +180,52 @@ export function createLyricsResolver(host: Host, deps: { spotify?: SpotifyIdReso
     const stored = await readStored(track.id, sig);
     if (stored || signal.aborted) return { lyrics: signal.aborted ? null : stored, degraded: false };
 
+    // External requests end with the run, so a source cut off below stops retrying.
+    const external = new AbortController();
+    const stopExternal = () => external.abort();
+    signal.addEventListener("abort", stopExternal, { once: true });
+    try {
+      return await runSteps(track, settings, sig, signal, external.signal);
+    } finally {
+      signal.removeEventListener("abort", stopExternal);
+      external.abort();
+    }
+  }
+
+  async function runSteps(track: TrackInfo, settings: Settings, sig: string, signal: AbortSignal, external: AbortSignal): Promise<RunResult> {
+    const steps = sourceSteps(settings);
     const state = { degraded: false };
-    const deadline = Date.now() + EXTERNAL_BUDGET_MS;
-    // A step past the shared budget counts as a (temporary) failure of that source.
+    const started = Date.now();
+
+    // Yandex Music is asked right away: whether it has synced lyrics decides how long
+    // the external sources are waited for.
+    const yandexSynced = steps.includes("yandexSynced") ? fetchYandexSynced(host, track) : Promise.resolve(null);
+    let yandexReady = false;
+    const yandexHasSynced = yandexSynced.then(
+      (lyrics) => (yandexReady = lyrics !== null),
+      () => false, // the failure is reported by the yandexSynced step
+    );
+
+    // A step cut off here counts as a (temporary) failure of that source.
     const withinBudget = async <T>(work: () => Promise<T | null>): Promise<T | null> => {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) {
+      const elapsed = Date.now() - started;
+      if (elapsed >= EXTERNAL_LIMIT_MS || (elapsed >= EXTERNAL_BUDGET_MS && yandexReady)) {
         state.degraded = true;
         return null;
       }
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const overBudget = new Promise<null>((resolve) => {
-        timer = setTimeout(() => {
-          state.degraded = true;
-          resolve(null);
-        }, remaining);
-      });
+      const timers: ReturnType<typeof setTimeout>[] = [];
+      const after = (ms: number) => new Promise<void>((resolve) => timers.push(setTimeout(resolve, Math.max(0, started + ms - Date.now()))));
+      const cutoff = Promise.race([
+        after(EXTERNAL_LIMIT_MS),
+        Promise.all([after(EXTERNAL_BUDGET_MS), yandexHasSynced]).then(([, ready]) => (ready ? undefined : new Promise<void>(() => {}))),
+      ]);
       try {
-        return await Promise.race([work(), overBudget]);
+        const result = await Promise.race([work().then((value) => ({ value })), cutoff.then(() => null)]);
+        if (result) return result.value;
+        state.degraded = true;
+        return null;
       } finally {
-        clearTimeout(timer);
+        for (const timer of timers) clearTimeout(timer);
       }
     };
 
@@ -202,11 +233,14 @@ export function createLyricsResolver(host: Host, deps: { spotify?: SpotifyIdReso
     let lrclib: Promise<LrclibParts | null> | undefined;
     let lrclibSettled = false;
     const fromLrclib = () =>
-      (lrclib ??= fetchLrclib(host, track, signal)
+      (lrclib ??= fetchLrclib(host, track, external, {
+        // A busy LRCLIB is waited for only when Yandex Music has no synced lyrics instead.
+        shouldRetry: async () => !(await yandexHasSynced),
+      })
         .then(
           (record) => (record ? lrclibToLyrics(record, track.durationMs / 1000) : null),
           (error) => {
-            if (!signal.aborted) {
+            if (!external.aborted) {
               state.degraded = true;
               host.log.warn("[spicy-lyrics] LRCLIB failed", error);
             }
@@ -221,13 +255,24 @@ export function createLyricsResolver(host: Host, deps: { spotify?: SpotifyIdReso
       return parts ? pick(parts) : null;
     };
 
-    for (const step of sourceSteps(settings)) {
+    const finish = async (lyrics: Lyrics): Promise<RunResult> => {
+      if (!state.degraded) await store(track.id, sig, lyrics);
+      return { lyrics, degraded: state.degraded };
+    };
+
+    // Spicy's unsynced text (Spotify's fallback) gives way to synced lyrics from the
+    // other sources and is shown ahead of their unsynced text.
+    let spicyText: Lyrics | null = null;
+    for (const step of steps) {
       if (signal.aborted) return { lyrics: null, degraded: false };
       let lyrics: Lyrics | null = null;
       try {
-        if (step === "spicy") lyrics = await withinBudget(() => spicyStep(track, settings, signal, state));
+        if (step === "spicy") {
+          lyrics = await withinBudget(() => spicyStep(track, settings, external, state));
+          if (lyrics?.Type === "Static") [spicyText, lyrics] = [lyrics, null];
+        } else if (spicyText && (step === "yandexPlain" || step === "lrclibPlain")) lyrics = spicyText;
         else if (step === "lrclibWord") lyrics = await lrclibPart((parts) => parts.word);
-        else if (step === "yandexSynced") lyrics = await fetchYandexSynced(host, track);
+        else if (step === "yandexSynced") lyrics = await yandexSynced;
         else if (step === "lrclibSynced") lyrics = await lrclibPart((parts) => parts.synced);
         else if (step === "yandexPlain") lyrics = await fetchYandexPlain(host, track);
         else lyrics = await lrclibPart((parts) => parts.plain);
@@ -238,12 +283,9 @@ export function createLyricsResolver(host: Host, deps: { spotify?: SpotifyIdReso
         }
       }
       if (signal.aborted) return { lyrics: null, degraded: false };
-      if (lyrics) {
-        if (!state.degraded) await store(track.id, sig, lyrics);
-        return { lyrics, degraded: state.degraded };
-      }
+      if (lyrics) return finish(lyrics);
     }
-    return { lyrics: null, degraded: state.degraded };
+    return spicyText ? finish(spicyText) : { lyrics: null, degraded: state.degraded };
   }
 
   function startFlight(track: TrackInfo): Flight {

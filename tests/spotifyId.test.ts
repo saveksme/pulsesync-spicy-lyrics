@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSpotifyIdResolver, normalizeTitle, pickSpotifyCandidate } from "../src/sources/spotifyId";
+import { createSpotifyIdResolver, normalizeTitle, pickSpotifyCandidates } from "../src/sources/spotifyId";
 import { fakeFetch, memoryStorage } from "./helpers/fakeHost";
 
 const track = {
@@ -25,8 +25,40 @@ describe("spotify id", () => {
       { id: "a", name: "Хочешь? (Live)", duration_ms: 300000, artists: [{ name: "Земфира" }] },
       { id: "b", name: "Хочешь?", duration_ms: 221500, artists: [{ name: "Zemfira" }, { name: "Земфира" }] },
     ];
-    expect(pickSpotifyCandidate(track, items)).toBe("b");
-    expect(pickSpotifyCandidate(track, [items[0]])).toBeNull();
+    expect(pickSpotifyCandidates(track, items)).toEqual(["b"]);
+    expect(pickSpotifyCandidates(track, [items[0]])).toEqual([]);
+  });
+
+  // Spicy's syncs belong to one Spotify release: a single and the album version of a song can
+  // differ (word-level on one, nothing on the other), so every matching release is offered.
+  it("offers every matching Spotify release, the one from the same album first", async () => {
+    const C = "1fZUqNHa6gSskIpsMA6Nuq";
+    const host = {
+      storage: memoryStorage(),
+      fetch: fakeFetch({
+        "https://labs.api.listenbrainz.org/": () => Response.json([]),
+        "https://accounts.spotify.com/api/token": () => Response.json({ access_token: "T", expires_in: 3600 }),
+        "https://api.spotify.com/v1/search": () =>
+          Response.json({
+            tracks: {
+              items: [
+                { id: A, name: "Хочешь?", duration_ms: 220000, artists: [{ name: "Земфира" }], album: { name: "Хочешь?" } },
+                { id: C, name: "Хочешь? (Live)", duration_ms: 300000, artists: [{ name: "Земфира" }], album: { name: "Live" } },
+                { id: B, name: "Хочешь?", duration_ms: 220500, artists: [{ name: "Земфира" }], album: { name: "Прости меня моя любовь" } },
+              ],
+            },
+          }),
+      }),
+    };
+    const r = createSpotifyIdResolver(host, () => ({ clientId: "id", clientSecret: "sec" }));
+    expect(await r.candidates(track)).toEqual([B, A]);
+  });
+
+  it("looks again instead of trusting ids cached by an earlier version", async () => {
+    const storage = memoryStorage();
+    await storage.set("spotifyIds:123", { ids: [], at: Date.now() });
+    const host = { storage, fetch: fakeFetch({ "https://labs.api.listenbrainz.org/": () => Response.json([{ spotify_track_ids: [A] }]) }) };
+    expect(await createSpotifyIdResolver(host, noCreds).candidates(track)).toEqual([A]);
   });
 
   // Spotify has several releases of one song; only some carry word-level lyrics in Spicy,

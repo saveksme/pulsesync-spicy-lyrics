@@ -10,6 +10,7 @@ export interface SpotifyItem {
   name: string;
   duration_ms: number;
   artists: { name: string }[];
+  album?: { name?: string };
 }
 
 // Candidate Spotify ids for a track, most likely first. [] = none found;
@@ -21,6 +22,8 @@ const SPOTIFY_TOKEN = "https://accounts.spotify.com/api/token";
 const SPOTIFY_SEARCH = "https://api.spotify.com/v1/search";
 const FOUND_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MISS_TTL_MS = 24 * 60 * 60 * 1000;
+// v2: earlier builds kept a single Spotify search match, not every release of the song.
+const CACHE_VERSION = 2;
 const MAX_DURATION_DELTA_MS = 3000;
 const MIN_SCORE = 4;
 const SPOTIFY_ID = /^[0-9A-Za-z]{22}$/;
@@ -41,10 +44,14 @@ function similarity(a: string, b: string, equal: number, partial: number): numbe
   return a.includes(b) || b.includes(a) ? partial : 0;
 }
 
-export function pickSpotifyCandidate(track: TrackInfo, items: SpotifyItem[]): string | null {
+// Every release of the song in the results, best first: the one on the same album as in
+// Yandex Music, then by how well title and artists match and by duration. Spicy's syncs
+// belong to one release, so the others are kept as fallbacks.
+export function pickSpotifyCandidates(track: TrackInfo, items: SpotifyItem[]): string[] {
   const titles = [normalizeTitle(track.title), ...(track.version ? [normalizeTitle(`${track.title} ${track.version}`)] : [])];
   const artists = track.artists.map(normalizeTitle).filter(Boolean);
-  let best: { id: string; score: number; delta: number } | null = null;
+  const album = normalizeTitle(track.album ?? "");
+  const matches: { id: string; sameAlbum: boolean; score: number; delta: number }[] = [];
   for (const item of items) {
     if (!item || typeof item.id !== "string" || !item.id) continue;
     const delta = track.durationMs > 0 && Number.isFinite(item.duration_ms) ? Math.abs(item.duration_ms - track.durationMs) : 0;
@@ -56,9 +63,10 @@ export function pickSpotifyCandidate(track: TrackInfo, items: SpotifyItem[]): st
     for (const wanted of artists) for (const candidate of itemArtists) artistScore = Math.max(artistScore, similarity(candidate, wanted, 2, 1));
     const score = titleScore + artistScore;
     if (score < MIN_SCORE) continue;
-    if (!best || score > best.score || (score === best.score && delta < best.delta)) best = { id: item.id, score, delta };
+    matches.push({ id: item.id, sameAlbum: album !== "" && normalizeTitle(item.album?.name ?? "") === album, score, delta });
   }
-  return best?.id ?? null;
+  matches.sort((a, b) => Number(b.sameAlbum) - Number(a.sameAlbum) || b.score - a.score || a.delta - b.delta);
+  return [...new Set(matches.map((match) => match.id))];
 }
 
 type Lookup = string | null | undefined; // undefined = network failure, not a miss
@@ -94,8 +102,8 @@ export function createSpotifyIdResolver(
 
   async function readCache(trackId: string): Promise<string[] | undefined> {
     if (memory.has(trackId)) return memory.get(trackId);
-    const entry = await host.storage.get<{ ids: string[]; at: number }>(`spotifyIds:${trackId}`).catch(() => undefined);
-    if (!entry || typeof entry.at !== "number" || !Array.isArray(entry.ids)) return undefined;
+    const entry = await host.storage.get<{ v?: number; ids: string[]; at: number }>(`spotifyIds:${trackId}`).catch(() => undefined);
+    if (!entry || entry.v !== CACHE_VERSION || typeof entry.at !== "number" || !Array.isArray(entry.ids)) return undefined;
     if (Date.now() - entry.at > (entry.ids.length ? FOUND_TTL_MS : MISS_TTL_MS)) return undefined;
     memory.set(trackId, entry.ids);
     return entry.ids;
@@ -103,7 +111,7 @@ export function createSpotifyIdResolver(
 
   async function writeCache(trackId: string, ids: string[]) {
     memory.set(trackId, ids);
-    await host.storage.set(`spotifyIds:${trackId}`, { ids, at: Date.now() }).catch(() => undefined);
+    await host.storage.set(`spotifyIds:${trackId}`, { v: CACHE_VERSION, ids, at: Date.now() }).catch(() => undefined);
   }
 
   // One POST for all spellings; the answers come back in query order.
@@ -155,7 +163,7 @@ export function createSpotifyIdResolver(
   async function spotifySearch(title: string, artist: string, bearer: string, signal?: AbortSignal): Promise<SpotifyItem[] | undefined> {
     const url = new URL(SPOTIFY_SEARCH);
     url.searchParams.set("type", "track");
-    url.searchParams.set("limit", "5");
+    url.searchParams.set("limit", "10");
     url.searchParams.set("q", artist ? `track:"${title}" artist:"${artist}"` : `track:"${title}"`);
     try {
       const response = await host.fetch(url.href, { headers: { Authorization: `Bearer ${bearer}` }, timeoutMs: 10_000, signal });
@@ -179,9 +187,9 @@ export function createSpotifyIdResolver(
         const items = await spotifySearch(title, track.artists[0] ?? "", bearer, signal);
         if (signal?.aborted) return [];
         if (items === undefined) failed = true;
-        const id = items ? pickSpotifyCandidate(track, items) : null;
-        if (id) {
-          found.push(id);
+        const ids = items ? pickSpotifyCandidates(track, items) : [];
+        if (ids.length > 0) {
+          found.push(...ids);
           break;
         }
       }
