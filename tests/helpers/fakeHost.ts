@@ -38,6 +38,7 @@ export function fakeHost(overrides: Partial<Host> = {}): Host {
     storage: memoryStorage(),
     getYandexLyrics: async () => null,
     onPlayer: () => noop,
+    onRoute: () => noop,
     seek: noop,
     togglePlay: noop,
     next: noop,

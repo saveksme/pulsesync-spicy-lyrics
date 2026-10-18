@@ -4,6 +4,9 @@ export interface TrackInfo {
   title: string;
   version?: string;
   artists: string[];
+  // Yandex Music artist ids in the order of `artists`, null for one without a page there
+  // (Various artists); absent when none has one.
+  artistIds?: (string | null)[];
   album?: string;
   durationMs: number;
   coverUrl?: string;
@@ -38,9 +41,13 @@ export function toTrackInfo(meta: unknown): TrackInfo | null {
   const id = String(meta.id);
   const albums = Array.isArray(meta.albums) ? meta.albums.filter(isRecord) : [];
   const album = albums[0];
-  const artists = Array.isArray(meta.artists)
-    ? meta.artists.map((artist) => (isRecord(artist) ? text(artist.name) : undefined)).filter((name): name is string => Boolean(name))
-    : [];
+  const credits = (Array.isArray(meta.artists) ? meta.artists.filter(isRecord) : []).flatMap((artist) => {
+    const name = text(artist.name);
+    const id = typeof artist.id === "string" || typeof artist.id === "number" ? String(artist.id) : null;
+    return name ? [{ name, id: artist.various === true ? null : id }] : [];
+  });
+  const artists = credits.map((credit) => credit.name);
+  const artistIds = credits.map((credit) => credit.id);
   const version = text(meta.version);
   const albumTitle = album ? (text(album.title) ?? text(album.name)) : undefined;
   const cover = coverUrl(text(meta.coverUri) ?? (album ? text(album.coverUri) : undefined));
@@ -51,6 +58,7 @@ export function toTrackInfo(meta: unknown): TrackInfo | null {
     title: text(meta.title) ?? text(meta.name) ?? "",
     ...(version && !/^https?:\/\//.test(version) ? { version } : {}),
     artists,
+    ...(artistIds.some(Boolean) ? { artistIds } : {}),
     ...(albumTitle ? { album: albumTitle } : {}),
     durationMs: durationOf(meta),
     ...(cover ? { coverUrl: cover } : {}),

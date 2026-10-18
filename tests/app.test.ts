@@ -206,6 +206,57 @@ describe("App", () => {
   });
 });
 
+// Like Spicy's page when Spotify navigates away, the lyrics make way for the page Yandex Music opens.
+it("closes when Yandex Music goes to another page", () => {
+  vi.useFakeTimers();
+  let report!: (route: string) => void;
+  const app = startApp(
+    fakeHost({
+      onRoute: (listener) => {
+        report = listener;
+        return () => {};
+      },
+    }),
+  );
+  report("/");
+  app.open();
+  report("/collection");
+  vi.advanceTimersByTime(300);
+  expect(document.querySelector("#SpicyLyricsPage")).toBeNull();
+  app.dispose();
+  vi.useRealTimers();
+});
+
+// The artists under the cover open their page through Yandex Music's own links, and the
+// lyrics make way for it.
+it("opens an artist's page from the NowBar and makes way for it", () => {
+  vi.useFakeTimers();
+  let emit!: (s: PlayerState) => void;
+  const app = startApp(
+    fakeHost({
+      onPlayer: (listener) => {
+        emit = listener;
+        return () => {};
+      },
+    }),
+  );
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div class="PlayerBarDesktopWithBackgroundProgressBar_root__bpmwN"><a id="ym-artist" href="/artist?artistId=975699">Макс Корж</a></div>`,
+  );
+  const openedInYandexMusic = vi.fn((event: Event) => event.preventDefault());
+  document.getElementById("ym-artist")!.addEventListener("click", openedInYandexMusic);
+  app.open();
+  emit({ status: "playing", progressSec: 0, track: { ...tr("1"), artists: ["Макс Корж"], artistIds: ["975699"] }, volume: 1 });
+  vi.advanceTimersByTime(500);
+  document.querySelector<HTMLElement>("#SpicyLyricsPage .Artists .Clickable")!.click();
+  expect(openedInYandexMusic).toHaveBeenCalledTimes(1);
+  vi.advanceTimersByTime(300);
+  expect(document.querySelector("#SpicyLyricsPage")).toBeNull();
+  app.dispose();
+  vi.useRealTimers();
+});
+
 // Yandex Music's fullscreen player shows its lyrics over the whole window: Spicy Lyrics takes
 // its place there, and the player closes so nothing is left behind it.
 it("opens over the whole window from Yandex Music's fullscreen player and closes that player", () => {

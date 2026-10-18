@@ -179,4 +179,23 @@ describe("createSdkHost", () => {
     await vi.waitFor(() => expect(states).toHaveLength(1));
     expect(states[0]).toMatchObject({ status: "paused", progressSec: 0, volume: 1 });
   });
+
+  // The desktop app keeps ids in the query (/artist?artistId=7), so the route is path and query.
+  it("reports Yandex Music's route as its path and query", () => {
+    let report!: (snapshot: unknown) => void;
+    const { api } = fakeApi({
+      router: {
+        onChange: (listener: (snapshot: unknown) => void) => {
+          report = listener;
+          return () => {};
+        },
+      },
+    });
+    const routes: string[] = [];
+    createSdkHost(api).onRoute((route) => routes.push(route));
+    report({ href: "music-application://desktop/artist?artistId=7", pathname: "/artist", search: "?artistId=7", hash: "" });
+    report({ href: "music-application://desktop/collection#top", pathname: "/collection", search: "", hash: "#top" });
+    report(null);
+    expect(routes).toEqual(["/artist?artistId=7", "/collection"]);
+  });
 });

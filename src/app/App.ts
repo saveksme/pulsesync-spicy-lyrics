@@ -6,6 +6,7 @@ import type { Settings } from "../core/types";
 import { createLyricsResolver, type LyricsResolver } from "../sources/resolve";
 import { LyricsPage, type PageMode } from "../ui/Page";
 import { installNativeLyricsHook } from "./NativeLyricsHook";
+import { openArtistPage, watchNavigation } from "./Navigation";
 
 const FULLSCREEN_PLAYER_CLOSE_SELECTOR = '[data-test-id="FULLSCREEN_PLAYER_CLOSE_BUTTON"]';
 
@@ -32,7 +33,14 @@ const SOURCE_FIELDS = [
 export function startApp(host: Host, deps: { doc?: Document; resolver?: LyricsResolver } = {}): AppController {
   const doc = deps.doc ?? document;
   const clock = new PlayerClock();
-  const page = new LyricsPage({ host, clock, doc });
+  const page = new LyricsPage({
+    host,
+    clock,
+    doc,
+    openArtist: guarded(host.log, "artist link", (artistId: string) => {
+      if (!openArtistPage(doc, artistId)) host.log.warn("[spicy-lyrics] no Yandex Music link to artist", artistId);
+    }),
+  });
   const resolver = deps.resolver ?? createLyricsResolver(host);
   let settings = host.getSettings();
   let track: TrackInfo | null = null;
@@ -100,6 +108,10 @@ export function startApp(host: Host, deps: { doc?: Document; resolver?: LyricsRe
     () => settings.replaceNativeLyricsButton,
   );
 
+  // The view makes way for whatever Yandex Music opens, an artist's page from the NowBar
+  // included (its link is Yandex Music's own).
+  const stopNavigation = watchNavigation(doc, host, () => page.close());
+
   const offSettings = host.onSettings(guarded(host.log, "settings update", (next) => {
     if (disposed) return;
     const previous = settings;
@@ -132,6 +144,7 @@ export function startApp(host: Host, deps: { doc?: Document; resolver?: LyricsRe
       offPlayer();
       offSettings();
       nativeHook.dispose();
+      stopNavigation();
       page.destroy();
     },
   };

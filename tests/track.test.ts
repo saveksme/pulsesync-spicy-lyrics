@@ -27,6 +27,18 @@ describe("track", () => {
     expect(t.coverUrl).toBe("https://avatars.yandex.net/get-music-content/1/ab/1000x1000");
   });
 
+  // Each artist links to its page in Yandex Music, which has none for "Various artists".
+  it("keeps the artists' Yandex Music ids in their order", () => {
+    const t = toTrackInfo({
+      id: "1",
+      title: "x",
+      artists: [{ id: 975699, name: "Макс Корж", various: false }, { name: "" }, { id: 171, name: "Various artists", various: true }, { name: "No id" }],
+    })!;
+    expect(t.artists).toEqual(["Макс Корж", "Various artists", "No id"]);
+    expect(t.artistIds).toEqual(["975699", null, null]);
+    expect(toTrackInfo({ id: "2", title: "x", artists: [{ name: "A" }] })!.artistIds).toBeUndefined();
+  });
+
   it("handles UGC/podcasts and missing fields", () => {
     expect(toTrackInfo({ id: "a1b2-uuid", title: "x" })!.isUgc).toBe(true);
     expect(toTrackInfo({ id: "1", title: "x", duration: 180 })!.durationMs).toBe(180000);

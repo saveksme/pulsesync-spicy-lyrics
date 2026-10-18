@@ -26,6 +26,9 @@ export interface Host {
   storage: HostStorage;
   getYandexLyrics(trackId: string, format: "LRC" | "TEXT"): Promise<string | null>;
   onPlayer(listener: (state: PlayerState) => void): () => void;
+  // Yandex Music's route, path and query ("/artist?artistId=7"): the current one first, then
+  // every change (possibly repeated).
+  onRoute(listener: (route: string) => void): () => void;
   seek(sec: number): void;
   togglePlay(): void;
   next(): void;

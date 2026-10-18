@@ -121,6 +121,10 @@ export function createSdkHost(api: AddonApi): Host {
         off();
       };
     },
+    onRoute: (listener) =>
+      api.router.onChange((snapshot: unknown) => {
+        if (isRecord(snapshot) && typeof snapshot.pathname === "string") listener(snapshot.pathname + (typeof snapshot.search === "string" ? snapshot.search : ""));
+      }),
     seek: (sec) => call("seek", () => api.client.setProgress(Math.max(0, sec))),
     togglePlay: () => call("togglePlay", () => api.client.togglePlayPause()),
     next: () => call("next", () => api.client.next()),

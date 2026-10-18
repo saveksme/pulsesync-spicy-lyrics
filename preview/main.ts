@@ -14,6 +14,7 @@ const track = (cover: string): TrackInfo => ({
   title: "Midnight Lights",
   version: "Demo",
   artists: ["Spicy Demo", "Гость"],
+  artistIds: ["1", null],
   album: "Preview",
   durationMs: DEMO_DURATION_MS,
   coverUrl: cover,
@@ -33,7 +34,8 @@ host.onSettings((settings) => {
   page.applySettings(settings);
 });
 
-const page = new LyricsPage({ host, clock });
+// The add-on opens the artist's page in Yandex Music; the preview only logs it.
+const page = new LyricsPage({ host, clock, openArtist: (artistId) => console.info("[open artist]", artistId) });
 const fixtures: Record<string, Lyrics> = { syllable: syllableDemo, line: lineDemo, static: staticDemo };
 let current = params.get("lyrics") ?? "syllable";
 page.setTrack(player.track);

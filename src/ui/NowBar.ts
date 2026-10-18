@@ -54,7 +54,8 @@ export class NowBar {
 
   constructor(
     private readonly root: HTMLElement,
-    private readonly deps: { host: Host; clock: PlayerClock },
+    // openArtist: opens an artist's page (by Yandex Music id); without it the artists are text.
+    private readonly deps: { host: Host; clock: PlayerClock; openArtist?: (artistId: string) => void },
   ) {
     root.replaceChildren(
       markup(`
@@ -88,6 +89,7 @@ export class NowBar {
     this.positionText = root.querySelector<HTMLElement>(".Time.Position")!;
     this.durationText = root.querySelector<HTMLElement>(".Time.Duration")!;
     this.setupTimeline();
+    this.setupArtistLinks();
   }
 
   private later(fn: () => void, ms: number) {
@@ -113,7 +115,9 @@ export class NowBar {
     const previous = this.track;
     this.track = track;
     if (track?.coverUrl !== previous?.coverUrl) this.swapCover(track?.coverUrl);
-    if (track?.title !== previous?.title || track?.artists.join() !== previous?.artists.join()) this.swapMetadata(track);
+    if (track?.title !== previous?.title || track?.artists.join() !== previous?.artists.join() || track?.artistIds?.join() !== previous?.artistIds?.join()) {
+      this.swapMetadata(track);
+    }
     setText(this.durationText, formatTime(track?.durationMs ?? 0));
   }
 
@@ -155,11 +159,43 @@ export class NowBar {
       if (token !== this.metadataToken) return;
       const title = track ? [track.title, track.version].filter(Boolean).join(" · ") : "";
       setText(this.metadata.querySelector(".SongName span"), title);
-      setText(this.metadata.querySelector(".Artists span"), track?.artists.join(", ") ?? "");
+      this.renderArtists(track);
       this.later(() => {
         if (token === this.metadataToken) this.metadata.classList.remove("tr_VisuallyHidden");
       }, 80);
     }, METADATA_SWAP_MS);
+  }
+
+  // Spicy's NowBar.ts: artists with a page are Clickable spans between ", ".
+  private renderArtists(track: TrackInfo | null): void {
+    const list = this.metadata.querySelector<HTMLElement>(".Artists > span")!;
+    list.replaceChildren();
+    track?.artists.forEach((name, index) => {
+      if (index > 0) list.append(", ");
+      const artistId = track.artistIds?.[index];
+      if (!artistId || !this.deps.openArtist) {
+        list.append(name);
+        return;
+      }
+      const link = document.createElement("span");
+      link.className = "Clickable";
+      link.dataset.artistId = artistId;
+      link.setAttribute("role", "link");
+      link.tabIndex = 0;
+      link.textContent = name;
+      list.append(link);
+    });
+  }
+
+  private setupArtistLinks(): void {
+    const open = (event: Event) => {
+      const link = event.target instanceof Element ? event.target.closest<HTMLElement>(".Artists .Clickable") : null;
+      if (link?.dataset.artistId) this.deps.openArtist?.(link.dataset.artistId);
+    };
+    this.listen(this.metadata, "click", open);
+    this.listen(this.metadata, "keydown", (event) => {
+      if ((event as KeyboardEvent).key === "Enter") open(event);
+    });
   }
 
   private durationMs(): number {

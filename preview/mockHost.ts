@@ -76,6 +76,7 @@ export function createMockHost(player: MockPlayer): Host {
       player.listeners.add(listener);
       return () => player.listeners.delete(listener);
     },
+    onRoute: () => () => {},
     seek: (sec) => player.seek(sec),
     togglePlay: () => player.toggle(),
     next: () => player.seek(0),

@@ -81,11 +81,13 @@ export class LyricsPage {
   private wasPlaying: boolean | null = null;
   private cleanups: (() => void)[] = [];
   private closing: ReturnType<typeof setTimeout> | null = null;
+  private readonly openArtist?: (artistId: string) => void;
 
-  constructor(deps: { host: Host; clock: PlayerClock; doc?: Document }) {
+  constructor(deps: { host: Host; clock: PlayerClock; doc?: Document; openArtist?: (artistId: string) => void }) {
     this.host = deps.host;
     this.clock = deps.clock;
     this.doc = deps.doc ?? document;
+    this.openArtist = deps.openArtist;
     this.settings = deps.host.getSettings();
     this.animator = new Animator({ simple: this.settings.simpleLyricsMode });
     void this.host.storage
@@ -226,7 +228,7 @@ export class LyricsPage {
     this.lyricsContent = page.querySelector<HTMLElement>(".LyricsContent");
     this.loader = page.querySelector<HTMLElement>(".loaderContainer");
     this.viewControls = page.querySelector<HTMLElement>(".ViewControls");
-    this.nowBar = new NowBar(this.nowBarEl!, { host: this.host, clock: this.clock });
+    this.nowBar = new NowBar(this.nowBarEl!, { host: this.host, clock: this.clock, openArtist: this.openArtist });
     this.background = new Background(this.contentBox!);
     this.scroller = new Scroller(this.lyricsContent!, this.lyricsContent!);
 
