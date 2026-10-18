@@ -72,12 +72,14 @@ export class Scroller {
   private viewportLine: HTMLElement | null = null;
   private lineInViewport = false;
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
+  private holdUntil = 0;
   private readonly onUserScroll = () => {
     if (!this.userScrolling) {
       this.userScrolling = true;
       this.contentEl.classList.add("HideLineBlur");
     }
     this.lastUserScroll = this.now();
+    this.holdUntil = 0;
   };
 
   constructor(
@@ -93,6 +95,12 @@ export class Scroller {
     this.forceQueued = true;
   }
 
+  // Centres the active line on every frame for a while, as the layout is still changing (a view
+  // change eases the column's padding and the lines rewrap all along). A scroll by hand ends it.
+  holdCentre(durationMs: number): void {
+    this.holdUntil = Math.max(this.holdUntil, this.now() + durationMs);
+  }
+
   reset(): void {
     this.lastLine = null;
     this.viewportLine = null;
@@ -102,6 +110,7 @@ export class Scroller {
     this.lastUserScroll = 0;
     this.lastPosition = 0;
     this.forceQueued = false;
+    this.holdUntil = 0;
     this.smoothQueued = false;
     this.scrolledToFirst = false;
     this.scrolledToLast = false;
@@ -157,7 +166,7 @@ export class Scroller {
     const oneActiveNoneSung = activeCount === 1 && sung === 0;
     const allSung = sung === lines.length;
 
-    const shouldForce = this.forceQueued || this.lastLine === null;
+    const shouldForce = this.forceQueued || this.now() < this.holdUntil || this.lastLine === null;
     const drastic = this.lastPosition !== 0 && Math.abs(positionMs - this.lastPosition) > DRASTIC_CHANGE_MS;
     if (shouldForce || (!isPlaying && this.lastPosition !== positionMs) || drastic) {
       const target = allSung ? lines[lines.length - 1].HTMLElement : current?.HTMLElement;

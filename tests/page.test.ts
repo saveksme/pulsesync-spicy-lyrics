@@ -17,6 +17,7 @@ vi.mock("@kawarp/core", () => ({
 import type { Host } from "../src/core/host";
 import { PlayerClock } from "../src/core/PlayerClock";
 import { DEFAULT_SETTINGS } from "../src/settings";
+import { Scroller } from "../src/render/Scroller";
 import { parseLrc } from "../src/sources/lrc";
 import { LyricsPage } from "../src/ui/Page";
 import { fakeHost } from "./helpers/fakeHost";
@@ -39,6 +40,7 @@ afterEach(() => {
   setHidden(false);
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -266,6 +268,31 @@ it("fits a line's hover background to its words when the pointer comes in", () =
   line.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
   expect(line.style.getPropertyValue("--HoverWidth")).toBe("300px");
   expect(line.style.getPropertyValue("--HoverLeft")).toBe("10px");
+});
+
+// The lyrics column's padding eases on every view change, and the lyrics area changes size with
+// the view and the window: the active line is held in the centre until the layout has settled.
+it("holds the active line in the centre while a view change or a resize settles", () => {
+  const observed = new Map<Element, () => void>();
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      constructor(private readonly callback: () => void) {}
+      observe(target: Element) {
+        observed.set(target, this.callback);
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const hold = vi.spyOn(Scroller.prototype, "holdCentre");
+  const page = newPage();
+  page.open();
+  hold.mockClear();
+  (document.querySelector("#SpicyLyricsPage #CinemaExit") as HTMLElement).click();
+  expect(hold).toHaveBeenCalledTimes(1);
+  observed.get(document.querySelector("#SpicyLyricsPage .LyricsContent")!)!();
+  expect(hold).toHaveBeenCalledTimes(2);
 });
 
 // A view picked with the view controls is what the lyrics button opens next time; a one-off

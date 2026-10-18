@@ -221,11 +221,14 @@ html.SpicyLyricsOwnsLyricsButton [data-pulsesync-addon-player-button][aria-label
   pointer-events: none;
 }
 
-/* Spicy's hover background hugs the line's words (lineHover.ts) instead of the whole column,
-   with the same padding on both sides. */
+/* Spicy's hover background follows the line's words (lineHover.ts) instead of the whole column,
+   with room around them for the sung words' growth and glow: half a letter's height to the
+   sides, a third above and below. */
 #SpicyLyricsPage.SpicyRenderer:not(.NoLineHoverBackground) .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer:not([data-lyrics-type="Static"]) .line:not(.musical-line)::before {
-  left: var(--HoverLeft, 0px);
-  width: calc(var(--HoverWidth, 100%) + 0.25cqw * 4);
+  left: calc(var(--HoverLeft, 0px) - 0.5em);
+  width: calc(var(--HoverWidth, 100%) + 1em);
+  height: calc(100% + 0.6em);
+  transform: translateY(-50%);
 }
 
 /* Line blur off (setting): Spicy's HideLineBlur, but permanent. */

@@ -29,6 +29,9 @@ const VIEW_KEY = "view";
 // and its lyrics view brings the cover and the lyrics into place in 0.8 s.
 const CLOSE_MS = 300;
 const ENTRANCE_MS = 800;
+// After a view change or a resize the lyrics column's padding eases for 0.4 s (spicy-lyrics.css);
+// the active line is held in the centre until then.
+const LAYOUT_SETTLE_MS = 500;
 
 // On <html> while the view covers the window: ym.css then gives Yandex Music's transparent title
 // bar the background it has on other pages (on My Wave the wave's gradient shows through it).
@@ -267,7 +270,12 @@ export class LyricsPage {
         this.placeHost();
       }),
     );
+    // The lyrics area changes size with the view and the window (Spicy's CreateLyricsContainer).
+    const onResize = guarded(log, "lyrics resize", () => this.scroller?.holdCentre(LAYOUT_SETTLE_MS));
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(onResize) : null;
+    resizeObserver?.observe(this.lyricsContent!);
     this.cleanups.push(
+      () => resizeObserver?.disconnect(),
       () => this.lyricsContent?.removeEventListener("click", onClick),
       () => this.lyricsContent?.removeEventListener("mouseover", onHover),
       () => this.doc.removeEventListener("keydown", onKey, true),
@@ -310,7 +318,7 @@ export class LyricsPage {
     page.classList.toggle("NowBarStatus__Closed", !open);
     page.classList.toggle("NowBarSide__Right", right);
     page.classList.toggle("NowBarSide__Left", !right);
-    this.scroller?.queueForceScroll();
+    this.scroller?.holdCentre(LAYOUT_SETTLE_MS);
   }
 
   private saveView(): void {
