@@ -6,6 +6,12 @@ const NATIVE_LYRICS_SELECTOR = [
   '[data-test-id="SYNC_LYRICS_BUTTON"]',
 ].join(", ");
 const LYRICS_BUTTON_SELECTOR = '[data-test-id="PLAYERBAR_DESKTOP_SYNC_LYRICS_BUTTON"]';
+// Yandex Music's fullscreen player, which has a lyrics button of its own (same test id).
+export const FULLSCREEN_PLAYER_SELECTOR = '[data-test-id="FULLSCREEN_PLAYER_MODAL"]';
+
+export interface NativeLyricsOpen {
+  fromFullscreenPlayer: boolean;
+}
 
 // Set on <html> while Yandex Music's lyrics button opens Spicy Lyrics; ym.css then hides the
 // add-on's own player-bar button, so the player bar has one lyrics button.
@@ -21,13 +27,13 @@ export interface NativeLyricsHook {
 // opens while the option is on. Yandex Music disables its button for tracks it has no lyrics
 // for; Spicy Lyrics may still have them, so the button is kept usable. Turning the option off
 // leaves the button to Yandex Music, which sets it right on its next render.
-export function installNativeLyricsHook(doc: Document, onOpen: () => void, enabled: () => boolean): NativeLyricsHook {
+export function installNativeLyricsHook(doc: Document, onOpen: (context: NativeLyricsOpen) => void, enabled: () => boolean): NativeLyricsHook {
   const onClick = (event: Event) => {
     const target = event.target;
     if (!(target instanceof Element) || !target.closest(NATIVE_LYRICS_SELECTOR) || !enabled()) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    onOpen();
+    onOpen({ fromFullscreenPlayer: target.closest(FULLSCREEN_PLAYER_SELECTOR) !== null });
   };
 
   const sync = () => {

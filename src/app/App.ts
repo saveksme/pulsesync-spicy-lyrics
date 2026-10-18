@@ -7,6 +7,8 @@ import { createLyricsResolver, type LyricsResolver } from "../sources/resolve";
 import { LyricsPage, type PageMode } from "../ui/Page";
 import { installNativeLyricsHook } from "./NativeLyricsHook";
 
+const FULLSCREEN_PLAYER_CLOSE_SELECTOR = '[data-test-id="FULLSCREEN_PLAYER_CLOSE_BUTTON"]';
+
 export interface AppController {
   open(mode?: PageMode): void;
   close(): void;
@@ -86,9 +88,15 @@ export function startApp(host: Host, deps: { doc?: Document; resolver?: LyricsRe
   }));
 
   // Yandex Music's own lyrics button opens Spicy Lyrics (and toggles it, like its own panel).
+  // In its fullscreen player, where its lyrics fill the window, Spicy Lyrics takes the player's
+  // place over the whole window, and the player closes so that nothing is left behind.
   const nativeHook = installNativeLyricsHook(
     doc,
-    guarded(host.log, "native lyrics button", () => app.toggle()),
+    guarded(host.log, "native lyrics button", ({ fromFullscreenPlayer }: { fromFullscreenPlayer: boolean }) => {
+      if (!fromFullscreenPlayer) return app.toggle();
+      doc.querySelector<HTMLElement>(FULLSCREEN_PLAYER_CLOSE_SELECTOR)?.click();
+      app.open("cinema");
+    }),
     () => settings.replaceNativeLyricsButton,
   );
 

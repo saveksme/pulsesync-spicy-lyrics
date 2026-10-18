@@ -205,3 +205,29 @@ describe("App", () => {
     vi.useRealTimers();
   });
 });
+
+// Yandex Music's fullscreen player shows its lyrics over the whole window: Spicy Lyrics takes
+// its place there, and the player closes so nothing is left behind it.
+it("opens over the whole window from Yandex Music's fullscreen player and closes that player", () => {
+  vi.useFakeTimers();
+  const app = startApp(fakeHost());
+  app.open();
+  (document.querySelector("#SpicyLyricsPage #CinemaExit") as HTMLElement).click();
+  app.close();
+  vi.advanceTimersByTime(300);
+  document.body.insertAdjacentHTML(
+    "beforeend",
+    `<div data-test-id="FULLSCREEN_PLAYER_MODAL">
+      <button data-test-id="FULLSCREEN_PLAYER_CLOSE_BUTTON"></button>
+      <button id="fullscreen-lyrics" data-test-id="PLAYERBAR_DESKTOP_SYNC_LYRICS_BUTTON"></button>
+    </div>`,
+  );
+  const closePlayer = vi.fn();
+  document.querySelector('[data-test-id="FULLSCREEN_PLAYER_CLOSE_BUTTON"]')!.addEventListener("click", closePlayer);
+  (document.getElementById("fullscreen-lyrics") as HTMLElement).click();
+  expect(closePlayer).toHaveBeenCalledTimes(1);
+  expect(document.getElementById("SpicyLyricsHost")!.classList.contains("Mode_Cinema")).toBe(true);
+  app.dispose();
+  document.querySelector('[data-test-id="FULLSCREEN_PLAYER_MODAL"]')!.remove();
+  vi.useRealTimers();
+});

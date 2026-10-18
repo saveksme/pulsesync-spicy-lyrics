@@ -30,6 +30,10 @@ const VIEW_KEY = "view";
 const CLOSE_MS = 300;
 const ENTRANCE_MS = 800;
 
+// On <html> while the view covers the window: ym.css then gives Yandex Music's transparent title
+// bar the background it has on other pages (on My Wave the wave's gradient shows through it).
+const COVERS_WINDOW_CLASS = "SpicyLyricsCoversWindow";
+
 const px = (value: number) => `${Math.round(value * 10) / 10}px`;
 
 interface ViewState {
@@ -50,6 +54,8 @@ export class LyricsPage {
   private settings: Settings;
   // Like Yandex Music's own lyrics view: over the whole window, the cover beside the lyrics.
   private mode: PageMode = "cinema";
+  // The view the lyrics button opens: the one last picked with the view controls.
+  private preferredMode: PageMode = "cinema";
   // Spicy Lyrics starts with the NowBar closed (uiState $isNowBarOpen = false).
   private view: ViewState = { nowBarOpen: false, nowBarSide: "left" };
   private track: TrackInfo | null = null;
@@ -95,7 +101,7 @@ export class LyricsPage {
     return this.hostEl !== null && this.closing === null;
   }
 
-  open(mode: PageMode = this.mode): void {
+  open(mode: PageMode = this.preferredMode): void {
     if (this.closing !== null) {
       clearTimeout(this.closing);
       this.closing = null;
@@ -145,6 +151,7 @@ export class LyricsPage {
     this.nowBar?.destroy();
     this.background?.destroy();
     this.hostEl.remove();
+    this.doc.documentElement.classList.remove(COVERS_WINDOW_CLASS);
     this.hostEl = this.page = this.contentBox = this.nowBarEl = this.lyricsContainer = this.lyricsContent = this.loader = this.viewControls = null;
     this.contentRect = null;
     this.nowBar = null;
@@ -331,6 +338,7 @@ export class LyricsPage {
     if (!cinema && this.doc.fullscreenElement === this.hostEl) void this.doc.exitFullscreen().catch(() => undefined);
     this.hostEl?.classList.toggle("Mode_Cinema", cinema);
     this.hostEl?.classList.toggle("Mode_Page", !cinema);
+    this.doc.documentElement.classList.toggle(COVERS_WINDOW_CLASS, cinema && this.hostEl !== null);
     this.page?.classList.toggle("Fullscreen", cinema);
     this.nowBar?.setControlsVisible(cinema, this.page ?? undefined);
     this.placeHost();
@@ -345,7 +353,7 @@ export class LyricsPage {
     const fullscreen = Boolean(this.doc.fullscreenElement);
     const buttons: [string, string, string, () => void][] = [];
     if (!cinema) {
-      buttons.push(["CinemaView", Icons.CinemaView, "Кинорежим", () => this.setMode("cinema")]);
+      buttons.push(["CinemaView", Icons.CinemaView, "Кинорежим", () => this.chooseMode("cinema")]);
       buttons.push(["NowBarToggle", Icons.NowBar, "NowBar", () => this.toggleNowBar()]);
     }
     if (this.view.nowBarOpen || cinema) buttons.push(["NowBarSideToggle", Icons.NowBarSideSwap, "Поменять сторону", () => this.swapNowBarSide()]);
@@ -356,7 +364,7 @@ export class LyricsPage {
         fullscreen ? "Выйти из полноэкранного режима" : "Во весь экран",
         () => this.toggleFullscreen(),
       ]);
-      buttons.push(["CinemaExit", Icons.NowBar, "Обычный вид", () => this.setMode("page")]);
+      buttons.push(["CinemaExit", Icons.NowBar, "Обычный вид", () => this.chooseMode("page")]);
     }
     buttons.push(["Close", Icons.ArrowDown, "Закрыть", () => this.close()]);
 
@@ -423,6 +431,11 @@ export class LyricsPage {
     if (!Number.isFinite(padding) || padding <= 0) return null;
     const rect = content.getBoundingClientRect();
     return right ? rect.right - padding : rect.left + padding;
+  }
+
+  private chooseMode(mode: PageMode): void {
+    this.preferredMode = mode;
+    this.setMode(mode);
   }
 
   private toggleNowBar(): void {

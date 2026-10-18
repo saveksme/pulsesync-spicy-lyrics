@@ -40,6 +40,12 @@
   }
 }
 
+/* While the view covers the window, Yandex Music's transparent title bar gets the background it
+   has on other pages; on My Wave the wave's gradient would show through it (Page.ts). */
+html.SpicyLyricsCoversWindow :is([class^="TitleBar_root"], [class*=" TitleBar_root"]) {
+  background-color: var(--ym-background-color-primary-enabled-basic, #000);
+}
+
 /* One lyrics button: while Yandex Music's own opens Spicy Lyrics (NativeLyricsHook), the
    add-on's player-bar button is not shown. */
 html.SpicyLyricsOwnsLyricsButton [data-pulsesync-addon-player-button][aria-label="Spicy Lyrics"] {

@@ -89,3 +89,15 @@ it("marks the page while Yandex Music's lyrics button is there to open Spicy Lyr
   await settle();
   expect(document.documentElement.classList.contains(OWNED)).toBe(false);
 });
+
+// Yandex Music's fullscreen player has the same lyrics button; Spicy Lyrics then takes over the window.
+it("says whether the lyrics button was pressed in Yandex Music's fullscreen player", () => {
+  document.body.innerHTML = `
+    <button id="bar" data-test-id="PLAYERBAR_DESKTOP_SYNC_LYRICS_BUTTON"></button>
+    <div data-test-id="FULLSCREEN_PLAYER_MODAL"><button id="full" data-test-id="PLAYERBAR_DESKTOP_SYNC_LYRICS_BUTTON"></button></div>`;
+  const onOpen = vi.fn();
+  install(onOpen, () => true);
+  document.getElementById("bar")!.click();
+  document.getElementById("full")!.click();
+  expect(onOpen.mock.calls).toEqual([[{ fromFullscreenPlayer: false }], [{ fromFullscreenPlayer: true }]]);
+});

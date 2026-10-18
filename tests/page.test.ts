@@ -267,3 +267,39 @@ it("fits a line's hover background to its words when the pointer comes in", () =
   expect(line.style.getPropertyValue("--HoverWidth")).toBe("300px");
   expect(line.style.getPropertyValue("--HoverLeft")).toBe("10px");
 });
+
+// A view picked with the view controls is what the lyrics button opens next time; a one-off
+// open in another view (from Yandex Music's fullscreen player) does not change that.
+it("remembers the view picked with the controls, not a one-off one", () => {
+  vi.useFakeTimers();
+  const page = newPage();
+  page.open();
+  (document.querySelector("#SpicyLyricsPage #CinemaExit") as HTMLElement).click();
+  expect(document.getElementById("SpicyLyricsHost")!.classList.contains("Mode_Page")).toBe(true);
+  page.close();
+  vi.advanceTimersByTime(300);
+  page.open("cinema");
+  expect(document.getElementById("SpicyLyricsHost")!.classList.contains("Mode_Cinema")).toBe(true);
+  page.close();
+  vi.advanceTimersByTime(300);
+  page.open();
+  expect(document.getElementById("SpicyLyricsHost")!.classList.contains("Mode_Page")).toBe(true);
+});
+
+// On My Wave the window's title bar is transparent over the wave's gradient; while the view
+// covers the window below it, ym.css gives it the background it has on other pages.
+it("marks the window while the view covers it, until the view has gone", () => {
+  vi.useFakeTimers();
+  const marked = () => document.documentElement.classList.contains("SpicyLyricsCoversWindow");
+  const page = newPage();
+  page.open();
+  expect(marked()).toBe(true);
+  (document.querySelector("#SpicyLyricsPage #CinemaExit") as HTMLElement).click();
+  expect(marked()).toBe(false);
+  (document.querySelector("#SpicyLyricsPage #CinemaView") as HTMLElement).click();
+  expect(marked()).toBe(true);
+  page.close();
+  expect(marked()).toBe(true);
+  vi.advanceTimersByTime(300);
+  expect(marked()).toBe(false);
+});
