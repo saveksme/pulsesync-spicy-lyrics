@@ -12,6 +12,7 @@ import { Scroller } from "../render/Scroller";
 import type { Lyrics } from "../sources/types";
 import { Background } from "./Background";
 import { Icons } from "./Icons";
+import { fitLineHover } from "./lineHover";
 import { buildNotice } from "./Notice";
 import { NowBar } from "./NowBar";
 import { computeCinemaRect, followContentArea, type OverlayRect, TITLE_BAR_SELECTOR } from "./overlayRect";
@@ -225,6 +226,13 @@ export class LyricsPage {
     const log = this.host.log;
     const onClick = guarded(log, "lyrics click", (event: Event) => this.seekToClickedLine(event));
     this.lyricsContent!.addEventListener("click", onClick);
+    // Entering a line (not moving between its words) fits its hover background to the text.
+    const onHover = guarded(log, "line hover", (event: MouseEvent) => {
+      const line = event.target instanceof Element ? event.target.closest<HTMLElement>(".line") : null;
+      const from = event.relatedTarget instanceof Node ? event.relatedTarget : null;
+      if (line && !(from && line.contains(from))) fitLineHover(line);
+    });
+    this.lyricsContent!.addEventListener("mouseover", onHover);
     const onKey = guarded(log, "keydown", (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (this.doc.fullscreenElement) void this.doc.exitFullscreen().catch(() => undefined);
@@ -252,6 +260,7 @@ export class LyricsPage {
     );
     this.cleanups.push(
       () => this.lyricsContent?.removeEventListener("click", onClick),
+      () => this.lyricsContent?.removeEventListener("mouseover", onHover),
       () => this.doc.removeEventListener("keydown", onKey, true),
       () => this.doc.removeEventListener("fullscreenchange", onFullscreen),
       () => this.doc.removeEventListener("visibilitychange", onVisibility),

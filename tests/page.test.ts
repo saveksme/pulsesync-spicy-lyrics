@@ -248,3 +248,22 @@ it("logs instead of throwing when a page event handler fails", () => {
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   expect(error).toHaveBeenCalledTimes(2);
 });
+
+// Spicy's hover background is fitted to the words of the line under the pointer (lineHover.ts).
+it("fits a line's hover background to its words when the pointer comes in", () => {
+  const rect = (left: number, width: number) =>
+    ({ left, width, right: left + width, top: 0, bottom: 40, height: 40, x: left, y: 0, toJSON: () => ({}) }) as DOMRect;
+  if (typeof Range.prototype.getClientRects !== "function") {
+    Object.defineProperty(Range.prototype, "getClientRects", { configurable: true, writable: true, value: () => [] });
+  }
+  vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([rect(110, 300)] as unknown as DOMRectList);
+  const page = newPage();
+  page.open();
+  page.setLyrics({ status: "ready", lyrics: parseLrc("[00:01.00]one\n[00:03.00]two", { source: "yandex" })! });
+  const line = [...document.querySelectorAll<HTMLElement>("#SpicyLyricsPage .line")].find((el) => el.textContent === "two")!;
+  line.getBoundingClientRect = () => rect(100, 600);
+  Object.defineProperty(line, "offsetWidth", { configurable: true, value: 600 });
+  line.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+  expect(line.style.getPropertyValue("--HoverWidth")).toBe("300px");
+  expect(line.style.getPropertyValue("--HoverLeft")).toBe("10px");
+});
