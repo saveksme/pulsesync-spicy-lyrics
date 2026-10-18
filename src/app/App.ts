@@ -85,12 +85,20 @@ export function startApp(host: Host, deps: { doc?: Document; resolver?: LyricsRe
     page.setVolume(state.volume);
   }));
 
+  // Yandex Music's own lyrics button opens Spicy Lyrics (and toggles it, like its own panel).
+  const nativeHook = installNativeLyricsHook(
+    doc,
+    guarded(host.log, "native lyrics button", () => app.toggle()),
+    () => settings.replaceNativeLyricsButton,
+  );
+
   const offSettings = host.onSettings(guarded(host.log, "settings update", (next) => {
     if (disposed) return;
     const previous = settings;
     settings = next;
     clock.offsetMs = next.timingOffsetMs;
     page.applySettings(next);
+    if (previous.replaceNativeLyricsButton !== next.replaceNativeLyricsButton) nativeHook.refresh();
     if (SOURCE_FIELDS.some((field) => previous[field] !== next[field])) {
       resolver.clear();
       load(track);
@@ -115,16 +123,10 @@ export function startApp(host: Host, deps: { doc?: Document; resolver?: LyricsRe
       loading?.abort();
       offPlayer();
       offSettings();
-      offNative();
+      nativeHook.dispose();
       page.destroy();
     },
   };
 
-  // Yandex Music's own button toggles its lyrics panel, so ours toggles too.
-  const offNative = installNativeLyricsHook(
-    doc,
-    guarded(host.log, "native lyrics button", () => app.toggle()),
-    () => settings.replaceNativeLyricsButton,
-  );
   return app;
 }

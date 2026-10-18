@@ -24,6 +24,12 @@ const FONT_URL = "https://fonts.spikerko.org/spicy-lyrics/source.css";
 const SEEK_FADE_COMPENSATION_MS = 300;
 const MAX_FRAME_ERRORS = 5;
 const VIEW_KEY = "view";
+// Yandex Music's fullscreen player: the window fades and slides in or out in 0.3 s (ym.css),
+// and its lyrics view brings the cover and the lyrics into place in 0.8 s.
+const CLOSE_MS = 300;
+const ENTRANCE_MS = 800;
+
+const px = (value: number) => `${Math.round(value * 10) / 10}px`;
 
 interface ViewState {
   nowBarOpen: boolean;
@@ -41,7 +47,8 @@ export class LyricsPage {
   private readonly clock: PlayerClock;
   private readonly doc: Document;
   private settings: Settings;
-  private mode: PageMode = "page";
+  // Like Yandex Music's own lyrics view: over the whole window, the cover beside the lyrics.
+  private mode: PageMode = "cinema";
   // Spicy Lyrics starts with the NowBar closed (uiState $isNowBarOpen = false).
   private view: ViewState = { nowBarOpen: false, nowBarSide: "left" };
   private track: TrackInfo | null = null;
@@ -52,6 +59,7 @@ export class LyricsPage {
   private page: HTMLElement | null = null;
   private contentBox: HTMLElement | null = null;
   private nowBarEl: HTMLElement | null = null;
+  private lyricsContainer: HTMLElement | null = null;
   private lyricsContent: HTMLElement | null = null;
   private loader: HTMLElement | null = null;
   private viewControls: HTMLElement | null = null;
@@ -65,6 +73,7 @@ export class LyricsPage {
   private frameErrors = 0;
   private wasPlaying: boolean | null = null;
   private cleanups: (() => void)[] = [];
+  private closing: ReturnType<typeof setTimeout> | null = null;
 
   constructor(deps: { host: Host; clock: PlayerClock; doc?: Document }) {
     this.host = deps.host;
@@ -82,11 +91,16 @@ export class LyricsPage {
   }
 
   get isOpen(): boolean {
-    return this.hostEl !== null;
+    return this.hostEl !== null && this.closing === null;
   }
 
   open(mode: PageMode = this.mode): void {
-    if (this.isOpen) {
+    if (this.closing !== null) {
+      clearTimeout(this.closing);
+      this.closing = null;
+      this.hostEl?.classList.add("Visible");
+    }
+    if (this.hostEl) {
       if (mode !== this.mode) this.setMode(mode);
       return;
     }
@@ -103,13 +117,26 @@ export class LyricsPage {
     void this.background!.setCover(this.track?.coverUrl, this.track?.averageColor);
     this.renderLyrics();
     this.doc.body.appendChild(this.hostEl!);
-    requestAnimationFrame(() => this.hostEl?.classList.add("Visible"));
+    requestAnimationFrame(() => {
+      if (!this.hostEl || this.closing !== null) return;
+      this.hostEl.classList.add("Visible");
+      this.playEntrance();
+    });
     this.startLoop();
   }
 
+  // Slides away like Yandex Music's fullscreen player, then goes.
   close(): void {
-    if (!this.hostEl) return;
+    if (!this.hostEl || this.closing !== null) return;
     if (this.doc.fullscreenElement === this.hostEl) void this.doc.exitFullscreen().catch(() => undefined);
+    this.hostEl.classList.remove("Visible");
+    this.closing = setTimeout(() => this.teardown(), CLOSE_MS);
+  }
+
+  private teardown(): void {
+    if (this.closing !== null) clearTimeout(this.closing);
+    this.closing = null;
+    if (!this.hostEl) return;
     cancelAnimationFrame(this.raf);
     this.raf = 0;
     for (const cleanup of this.cleanups.splice(0)) cleanup();
@@ -117,7 +144,7 @@ export class LyricsPage {
     this.nowBar?.destroy();
     this.background?.destroy();
     this.hostEl.remove();
-    this.hostEl = this.page = this.contentBox = this.nowBarEl = this.lyricsContent = this.loader = this.viewControls = null;
+    this.hostEl = this.page = this.contentBox = this.nowBarEl = this.lyricsContainer = this.lyricsContent = this.loader = this.viewControls = null;
     this.contentRect = null;
     this.nowBar = null;
     this.background = null;
@@ -132,7 +159,7 @@ export class LyricsPage {
   }
 
   destroy(): void {
-    this.close();
+    this.teardown();
   }
 
   setTrack(track: TrackInfo | null): void {
@@ -187,6 +214,7 @@ export class LyricsPage {
     this.page = page;
     this.contentBox = page.querySelector<HTMLElement>(".ContentBox");
     this.nowBarEl = page.querySelector<HTMLElement>(".NowBar");
+    this.lyricsContainer = page.querySelector<HTMLElement>(".LyricsContainer");
     this.lyricsContent = page.querySelector<HTMLElement>(".LyricsContent");
     this.loader = page.querySelector<HTMLElement>(".loaderContainer");
     this.viewControls = page.querySelector<HTMLElement>(".ViewControls");
@@ -321,7 +349,7 @@ export class LyricsPage {
       ]);
       buttons.push(["CinemaExit", Icons.NowBar, "Обычный вид", () => this.setMode("page")]);
     }
-    buttons.push(["Close", Icons.Close, "Закрыть", () => this.close()]);
+    buttons.push(["Close", Icons.ArrowDown, "Закрыть", () => this.close()]);
 
     controls.replaceChildren(
       ...buttons.map(([id, icon, label, action]) => {
@@ -338,9 +366,54 @@ export class LyricsPage {
         return button;
       }),
     );
-    // Spicy moves the controls onto the artwork in fullscreen.
-    const target = cinema ? this.nowBar?.viewControlsSlot : this.contentBox;
-    if (target && controls.parentElement !== target) target.appendChild(controls);
+    // In the top corner in every view, like the buttons of Yandex Music's fullscreen player.
+    if (this.contentBox && controls.parentElement !== this.contentBox) this.contentBox.appendChild(controls);
+  }
+
+  // Yandex Music's lyrics view (FullscreenPlayerDesktopContent): the cover moves from the centre to
+  // its side while the lyrics fade in from the cover's place, each overshooting by 1% of the width.
+  private playEntrance(): void {
+    const page = this.page;
+    const nowBar = this.nowBarEl;
+    const lyrics = this.lyricsContainer;
+    if (!page || !nowBar || !lyrics || !nowBar.classList.contains("Active") || typeof nowBar.animate !== "function") return;
+    if (this.doc.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const pageRect = page.getBoundingClientRect();
+    const cover = nowBar.getBoundingClientRect();
+    if (pageRect.width <= 0) return;
+    const right = this.view.nowBarSide === "right";
+    const overshoot = pageRect.width / 100;
+    const centre = pageRect.left + pageRect.width / 2;
+    const textEdge = this.lyricsTextEdge(right) ?? centre;
+    const timing: KeyframeAnimationOptions = { duration: ENTRANCE_MS, easing: "ease-in-out" };
+    nowBar.animate(
+      [
+        { transform: `translateX(${px(centre - (cover.left + cover.width / 2))})` },
+        { transform: `translateX(${px(right ? overshoot : -overshoot)})`, offset: 0.5 },
+        { transform: "none" },
+      ],
+      timing,
+    );
+    lyrics.animate(
+      [
+        { opacity: 0, transform: `translateX(${px((right ? cover.right : cover.left) - textEdge)})` },
+        { transform: `translateX(${px(right ? -overshoot : overshoot)})`, offset: 0.5 },
+        { opacity: 1, transform: "none" },
+      ],
+      timing,
+    );
+  }
+
+  // Where the lyrics text begins on the cover's side (the scroll column's padding), if laid out.
+  private lyricsTextEdge(right: boolean): number | null {
+    const content = this.lyricsContent;
+    const column = content?.querySelector<HTMLElement>(".SpicyLyricsScrollContainer");
+    const style = column ? this.doc.defaultView?.getComputedStyle(column) : undefined;
+    if (!content || !style) return null;
+    const padding = parseFloat(right ? style.paddingRight : style.paddingLeft);
+    if (!Number.isFinite(padding) || padding <= 0) return null;
+    const rect = content.getBoundingClientRect();
+    return right ? rect.right - padding : rect.left + padding;
   }
 
   private toggleNowBar(): void {

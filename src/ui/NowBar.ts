@@ -90,10 +90,6 @@ export class NowBar {
     this.setupTimeline();
   }
 
-  get viewControlsSlot(): HTMLElement {
-    return this.mediaContent;
-  }
-
   private later(fn: () => void, ms: number) {
     const timer = setTimeout(() => {
       this.timers.delete(timer);

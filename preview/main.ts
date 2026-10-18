@@ -42,7 +42,8 @@ if (params.get("simple") === "1") player.setSettings({ simpleLyricsMode: true })
 if (params.get("bg")) player.setSettings({ backgroundStyle: params.get("bg") as BackgroundStyle });
 if (params.get("at")) player.seek(Number(params.get("at")));
 if (params.get("paused") === "1") player.toggle();
-page.open(params.get("mode") === "cinema" ? "cinema" : "page");
+// Like the add-on: over the whole window unless ?mode=page asks for the content-area view.
+page.open(params.get("mode") === "page" ? "page" : undefined);
 // Same font, same-origin through the dev-server proxy (see vite.preview.config.ts).
 document.querySelector<HTMLLinkElement>("#SpicyLyricsFont")?.setAttribute("href", "/spicy-font/spicy-lyrics/source.css");
 

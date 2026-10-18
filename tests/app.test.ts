@@ -189,14 +189,19 @@ describe("App", () => {
     expect(document.querySelector("#SpicyLyricsPage .LyricsNotice")).not.toBeNull();
   });
 
+  // A second press closes it; like Yandex Music's player, it slides away first.
   it("toggles the view from the native lyrics button, like Yandex Music's own panel", () => {
-    startApp(fakeHost());
+    vi.useFakeTimers();
+    const app = startApp(fakeHost());
     const button = document.createElement("button");
     button.setAttribute("data-test-id", "PLAYERBAR_DESKTOP_SYNC_LYRICS_BUTTON");
     document.body.appendChild(button);
     button.click();
     expect(document.querySelector("#SpicyLyricsPage")).not.toBeNull();
     button.click();
+    vi.advanceTimersByTime(300);
     expect(document.querySelector("#SpicyLyricsPage")).toBeNull();
+    app.dispose();
+    vi.useRealTimers();
   });
 });

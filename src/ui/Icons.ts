@@ -13,6 +13,8 @@ const TrackSkip = `
 `;
 
 export const Icons = {
+  // Yandex Music's fullscreen player closes with an arrow down.
+  ArrowDown: Line(`<path d="m6 9 6 6 6-6"/>`),
   Close: Line(`<path d="m5.5 5.5 13 13"/><path d="m18.5 5.5-13 13"/>`),
   // The page in miniature: cover and title on the NowBar's side, lyric lines on the other.
   NowBar: Line(
