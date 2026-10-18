@@ -12,17 +12,21 @@ describe("overlay rect", () => {
     expect(computeOverlayRect(null, { width: 1240, height: 720 })).toEqual({ top: 0, left: 0, width: 1240, height: 720 });
   });
 
-  // On My Wave the page runs under Yandex Music's floating player bar.
   it("stops above the player bar where the content runs under it", () => {
     const content = box(25, 200, 1052, 765);
     const playerBar = box(712, 200, 1045, 78);
-    expect(computeOverlayRect(content, { width: 1265, height: 800 }, playerBar, 12)).toEqual({ top: 25, left: 200, width: 1052, height: 675 });
+    expect(computeOverlayRect(content, { width: 1265, height: 800 }, { playerBar, gap: 12 })).toEqual({ top: 25, left: 200, width: 1052, height: 675 });
   });
 
-  it("leaves the content area as it is where the player bar sits below it", () => {
-    const content = box(25, 200, 1052, 663);
-    const playerBar = box(700, 200, 1052, 80);
-    expect(computeOverlayRect(content, { width: 1252, height: 790 }, playerBar, 12)).toEqual({ top: 25, left: 200, width: 1052, height: 663 });
+  // Measured in Yandex Music (1280×800): on My Wave the content area reaches 12 px up under the
+  // title bar (0–32) and down to the player bar (708), where other pages leave Yandex Music's gap.
+  it("keeps My Wave's view in the same place as on other pages", () => {
+    const titleBar = box(0, 0, 1280, 32);
+    const playerBar = box(708, 224, 1044, 80);
+    const myWave = box(20, 224, 1044, 688);
+    expect(computeOverlayRect(myWave, { width: 1280, height: 800 }, { titleBar, playerBar, gap: 12 })).toEqual({ top: 32, left: 224, width: 1044, height: 664 });
+    const otherPage = box(32, 224, 1044, 664);
+    expect(computeOverlayRect(otherPage, { width: 1280, height: 800 }, { titleBar, playerBar, gap: 12 })).toEqual({ top: 32, left: 224, width: 1044, height: 664 });
   });
 
   // Yandex Music draws its own title bar (window buttons, drag area) inside the page.

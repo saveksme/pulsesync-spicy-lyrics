@@ -24,6 +24,11 @@
   transform: none;
 }
 
+/* In the content area the view is one of Yandex Music's panels, with their rounded corners. */
+#SpicyLyricsHost.Mode_Page {
+  border-radius: var(--ym-radius-size-xl, 1rem);
+}
+
 #SpicyLyricsHost:not(.Visible) {
   pointer-events: none;
 }

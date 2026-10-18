@@ -27,8 +27,32 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+// Words grow and lift as they are sung; the background follows their laid-out boxes, so it
+// fits the line whether or not it is the active one.
+it("fits the hover background to where the words are laid out, not to their animation", () => {
+  const element = line(rect(100, 600), 600);
+  element.textContent = "";
+  const words = [
+    [10, 120],
+    [140, 100],
+    [10, 230],
+  ].map(([offsetLeft, offsetWidth]) => {
+    const word = document.createElement("span");
+    word.className = "word";
+    word.textContent = "w";
+    Object.defineProperty(word, "offsetLeft", { configurable: true, value: offsetLeft });
+    Object.defineProperty(word, "offsetWidth", { configurable: true, value: offsetWidth });
+    return word;
+  });
+  element.append(...words);
+  textRects([rect(115, 200)]); // what the words measure while scaled down before they are sung
+  fitLineHover(element);
+  expect(element.style.getPropertyValue("--HoverLeft")).toBe("10px");
+  expect(element.style.getPropertyValue("--HoverWidth")).toBe("230px");
+});
+
 // Spicy's hover background spans the whole column; wrapped lines end well before its edge.
-it("fits the hover background to the line's text", () => {
+it("fits the hover background to a plain-text line's text", () => {
   const element = line(rect(100, 600), 600);
   textRects([rect(110, 300, 0), rect(110, 420, 40), rect(0, 0)]);
   fitLineHover(element);

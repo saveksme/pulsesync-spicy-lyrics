@@ -7,33 +7,40 @@ export interface OverlayRect {
 
 // The Yandex Music content column (between the navbar and above the player bar).
 export const CONTENT_SELECTORS = ['[class*="CommonLayout_content"]', '[class*="Content_main"]', "main"];
-// Yandex Music's player bar. On My Wave the page runs under it (the bar floats over the wave).
+// Yandex Music's player bar; on My Wave the content reaches down to it (the bar floats over the wave).
 export const PLAYER_BAR_SELECTORS = ['[class*="PlayerBarDesktopWithBackgroundProgressBar_root"]', '[class*="CommonLayout_playerBar"]'];
 // Space Yandex Music leaves between the content and the player bar (--ym-spacer-size-m).
 export const DEFAULT_LAYOUT_GAP = 12;
 
 type Boxed = { getBoundingClientRect(): DOMRect };
 
-export function computeOverlayRect(
-  content: Boxed | null,
-  viewport: { width: number; height: number },
-  playerBar: Boxed | null = null,
-  gap = DEFAULT_LAYOUT_GAP,
-): OverlayRect {
-  if (!content) return { top: 0, left: 0, width: viewport.width, height: viewport.height };
-  const rect = content.getBoundingClientRect();
-  if (rect.width < 200 || rect.height < 200) return { top: 0, left: 0, width: viewport.width, height: viewport.height };
-  let bottom = rect.top + rect.height;
-  const bar = playerBar?.getBoundingClientRect();
-  if (bar && bar.height > 0 && bar.top > rect.top && bar.top < bottom && bar.left < rect.left + rect.width && bar.left + bar.width > rect.left) {
-    bottom = Math.max(rect.top, bar.top - gap);
-  }
-  return { top: rect.top, left: rect.left, width: rect.width, height: bottom - rect.top };
-}
-
 // Yandex Music draws its window title bar (buttons and drag area) inside the page.
 export const TITLE_BAR_SELECTOR = '[class*="TitleBar_root"]';
 const MAX_TITLE_BAR_HEIGHT = 120;
+
+export interface LayoutAround {
+  titleBar?: Boxed | null;
+  playerBar?: Boxed | null;
+  gap?: number;
+}
+
+// The content column as a panel of other pages: on My Wave Yandex Music stretches it by its gap
+// up under the title bar and down to (or under) the player bar, for the wave behind them.
+export function computeOverlayRect(content: Boxed | null, viewport: { width: number; height: number }, around: LayoutAround = {}): OverlayRect {
+  if (!content) return { top: 0, left: 0, width: viewport.width, height: viewport.height };
+  const rect = content.getBoundingClientRect();
+  if (rect.width < 200 || rect.height < 200) return { top: 0, left: 0, width: viewport.width, height: viewport.height };
+  const gap = around.gap ?? DEFAULT_LAYOUT_GAP;
+  let top = rect.top;
+  let bottom = rect.top + rect.height;
+  const titleBottom = around.titleBar?.getBoundingClientRect().bottom;
+  if (titleBottom !== undefined && Number.isFinite(titleBottom) && titleBottom > top && titleBottom <= MAX_TITLE_BAR_HEIGHT) top = titleBottom;
+  const bar = around.playerBar?.getBoundingClientRect();
+  if (bar && bar.height > 0 && bar.top > top && bar.top < bottom + gap && bar.left < rect.left + rect.width && bar.left + bar.width > rect.left) {
+    bottom = Math.max(top, bar.top - gap);
+  }
+  return { top, left: rect.left, width: rect.width, height: bottom - top };
+}
 
 // The cinema view fills the window below that title bar, so the window stays usable.
 export function computeCinemaRect(
@@ -76,7 +83,13 @@ export function followContentArea(doc: Document, apply: (rect: OverlayRect) => v
       observed = content;
       if (content) observer?.observe(content);
     }
-    apply(computeOverlayRect(content, { width: view.innerWidth, height: view.innerHeight }, findFirst(doc, PLAYER_BAR_SELECTORS), layoutGap(doc)));
+    apply(
+      computeOverlayRect(
+        content,
+        { width: view.innerWidth, height: view.innerHeight },
+        { titleBar: doc.querySelector(TITLE_BAR_SELECTOR), playerBar: findFirst(doc, PLAYER_BAR_SELECTORS), gap: layoutGap(doc) },
+      ),
+    );
   };
   const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
   view.addEventListener("resize", update);
