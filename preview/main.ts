@@ -69,3 +69,4 @@ document.addEventListener("keydown", (event) => {
 });
 
 Object.assign(window, { page, player });
+
