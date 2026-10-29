@@ -1,4 +1,4 @@
-# PulseSync · Spicy Lyrics
+# PulseSync · SP Lyrics
 
 > **English:** an add-on for [PulseSync](https://github.com/PulseSync-LLC/PulseSync-client), a Yandex Music
 > desktop mod, that brings [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics) to Yandex Music: lyrics from

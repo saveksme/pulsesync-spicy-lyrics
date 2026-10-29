@@ -1,9 +1,9 @@
 {
-  "name": "pulsesync-spicy-lyrics",
+  "name": "pulsesync-sp-lyrics",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Spicy Lyrics for Yandex Music — PulseSync web-addon",
+  "description": "SP Lyrics for Yandex Music — PulseSync web-addon",
   "license": "AGPL-3.0-only",
   "author": "saveksme",
   "homepage": "https://github.com/saveksme/pulsesync-spicy-lyrics#readme",

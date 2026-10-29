@@ -8,12 +8,12 @@ let app: AppController | null = null;
 
 export default defineAddon({
   id: "spicy-lyrics",
-  name: "Spicy Lyrics",
+  name: "SP Lyrics",
   settings: settingsDefinition,
   playerBarButtons: [
     {
       id: "open-spicy-lyrics",
-      label: "Spicy Lyrics",
+      label: "SP Lyrics",
       description: "Текст песни в стиле Spicy Lyrics",
       // The player bar draws icons at size xs; Yandex Music's sprite has syncLyrics_xs but only lyrics_xxs.
       icon: "syncLyrics",

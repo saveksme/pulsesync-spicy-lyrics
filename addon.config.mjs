@@ -1,14 +1,14 @@
 const addonConfig = {
     id: 'spicy-lyrics',
     directoryName: 'spicy-lyrics',
-    name: 'Spicy Lyrics',
+    name: 'SP Lyrics',
     description:
         'Тексты песен в стиле Spicy Lyrics: пословная синхронизация, пружинная анимация, динамический фон и NowBar. Источник — библиотека Spicy Lyrics (Apple Music, сообщество) с запасными источниками Яндекс Музыки и LRCLIB.',
     version: '1.0.0',
     author: 'saveksme',
-    image: 'Assets/logo.svg',
-    banner: '',
-    libraryLogo: 'Assets/logo.svg',
+    image: 'Assets/avatar.png',
+    banner: 'Assets/banner.png',
+    libraryLogo: 'Assets/avatar.png',
     tags: ['lyrics', 'spicy lyrics', 'karaoke', 'player'],
     dependencies: [],
     allowedUrls: [

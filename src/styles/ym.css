@@ -50,7 +50,7 @@ html.SpicyLyricsCoversWindow :is([class^="TitleBar_root"], [class*=" TitleBar_ro
 
 /* One lyrics button: while Yandex Music's own opens Spicy Lyrics (NativeLyricsHook), the
    add-on's player-bar button is not shown. */
-html.SpicyLyricsOwnsLyricsButton [data-pulsesync-addon-player-button][aria-label="Spicy Lyrics"] {
+html.SpicyLyricsOwnsLyricsButton [data-pulsesync-addon-player-button][aria-label="SP Lyrics"] {
   display: none !important;
 }
 

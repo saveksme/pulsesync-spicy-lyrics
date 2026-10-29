@@ -67,8 +67,8 @@ export const SETTINGS_SCHEMA = {
   },
   replaceNativeLyricsButton: {
     type: "boolean",
-    name: "Открывать Spicy Lyrics вместо родного текста",
-    description: "Родная кнопка текста в плеер-баре открывает Spicy Lyrics (для любой музыки), и отдельная кнопка аддона не нужна. Если выключить, у Spicy Lyrics будет своя кнопка.",
+    name: "Открывать SP Lyrics вместо родного текста",
+    description: "Родная кнопка текста в плеер-баре открывает SP Lyrics (для любой музыки), и отдельная кнопка аддона не нужна. Если выключить, у SP Lyrics будет своя кнопка.",
     default: true,
   },
 } as const;
