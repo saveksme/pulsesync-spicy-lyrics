@@ -111,6 +111,12 @@ function stepSpring(spring: Springish, goal: number, dt: number): number {
   return spring.Step(dt);
 }
 
+// A resting word does not need its styles recomputed either: its springs already hold
+// exactly these goal values, so the frame would write the same strings as last time.
+function springRestingAt(spring: Springish, goal: number): boolean {
+  return spring.GetGoal?.() === goal && spring.CanSleep?.() === true;
+}
+
 const ScaleSpline = getSpline(ScaleRange);
 const GlowSpline = getSpline(GlowRange);
 const LineGlowSpline = getSpline(LineGlowRange);
@@ -397,6 +403,20 @@ export class Animator {
       const gradient =
         state === "Active" ? (this.simple ? -50 + 120 * percentage : -20 + 120 * percentage) : state === "NotSung" ? (this.simple ? -50 : -20) : 100;
       const store = word.AnimatorStore;
+      if (state !== "Active" && springRestingAt(store.Scale, ScaleSpline.at(at)) && springRestingAt(store.YOffset, this.YOffsetSpline.at(at)) && springRestingAt(store.Glow, GlowSpline.at(at))) {
+        if (!word.LetterGroup || !word.Letters) continue;
+        const sung = state === "Sung";
+        const lettersRest = word.Letters.every((letter) => {
+          const springs = letter.AnimatorStore;
+          return (
+            springs &&
+            springRestingAt(springs.Scale, this.LetterScaleSpline.at(sung ? 1 : 0)) &&
+            springRestingAt(springs.YOffset, this.LetterYOffsetSpline.at(sung ? 1 : 0)) &&
+            springRestingAt(springs.Glow, GlowSpline.at(sung ? 1 : 0))
+          );
+        });
+        if (lettersRest) continue;
+      }
       const scale = stepSpring(store.Scale, ScaleSpline.at(at), dt);
       const yOffset = stepSpring(store.YOffset, this.YOffsetSpline.at(at), dt);
       const glow = stepSpring(store.Glow, GlowSpline.at(at), dt);
@@ -510,11 +530,7 @@ export class Animator {
         if (state === "Active") {
           this.animateSyllableLine(line, position, dt);
         } else if (state === "Sung") {
-          const next = lines[index + 1];
-          const nextState = next ? getElementState(position, next.StartTime, next.EndTime) : null;
-          if (line.Settling || !next || nextState === "NotSung" || nextState === "Active") {
-            if (this.settleSyllableLine(line, dt)) line.Settling = false;
-          }
+          if (line.Settling && this.settleSyllableLine(line, dt)) line.Settling = false;
         }
       } else if (state === "Active") {
         this.animateLineType(line, state, position, dt);

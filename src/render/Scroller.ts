@@ -76,6 +76,10 @@ export class Scroller {
   private lineInViewport = false;
   private pendingTimer: ReturnType<typeof setTimeout> | null = null;
   private holdUntil = 0;
+  private oversizedFor: LineItem | null = null;
+  private oversized = false;
+  private oversizedCheckedAt = 0;
+  private lastFollowedWord: HTMLElement | null = null;
   private readonly onUserScroll = () => {
     if (!this.userScrolling) {
       this.userScrolling = true;
@@ -83,6 +87,7 @@ export class Scroller {
     }
     this.lastUserScroll = this.now();
     this.holdUntil = 0;
+    this.lastFollowedWord = null;
   };
 
   constructor(
@@ -115,6 +120,10 @@ export class Scroller {
     this.forceQueued = false;
     this.holdUntil = 0;
     this.smoothQueued = false;
+    this.oversizedFor = null;
+    this.oversized = false;
+    this.oversizedCheckedAt = 0;
+    this.lastFollowedWord = null;
     this.scrolledToFirst = false;
     this.scrolledToLast = false;
     if (this.pendingTimer) clearTimeout(this.pendingTimer);
@@ -143,12 +152,20 @@ export class Scroller {
   // Lines taller than the visible band leave the sung words off-screen when centred
   // (some uploads sync a whole verse as one line). Keep the active word inside the
   // middle band instead. Returns true when the line is oversized and handled here.
+  // Height reads are cached: per-frame layout queries here used to force a reflow after
+  // every animated style write, which dominated the scroller's frame time.
   private followOversizedLine(item: LineItem | null | undefined, positionMs: number, instant: boolean): boolean {
     if (!item) return false;
-    const element = item.HTMLElement;
-    const view = this.scrollEl.clientHeight;
-    const margin = view * OVERSIZED_BAND_RATIO;
-    if (element.clientHeight <= view - margin * 2) return false;
+    const now = this.now();
+    if (item !== this.oversizedFor || instant || now - this.oversizedCheckedAt > 1000) {
+      const view = this.scrollEl.clientHeight;
+      const margin = view * OVERSIZED_BAND_RATIO;
+      this.oversized = item.HTMLElement.clientHeight > view - margin * 2;
+      this.oversizedFor = item;
+      this.oversizedCheckedAt = now;
+      this.lastFollowedWord = null;
+    }
+    if (!this.oversized) return false;
     const lead = item.Syllables?.Lead;
     if (!lead || lead.length === 0) return false;
     let word = null;
@@ -158,6 +175,10 @@ export class Scroller {
     }
     const wordEl = word?.HTMLElement;
     if (!wordEl) return false;
+    if (wordEl === this.lastFollowedWord && !instant) return true;
+    const element = item.HTMLElement;
+    const view = this.scrollEl.clientHeight;
+    const margin = view * OVERSIZED_BAND_RATIO;
     const top = element.offsetTop + wordEl.offsetTop;
     const bottom = top + wordEl.clientHeight;
     const viewTop = this.scrollEl.scrollTop;
@@ -165,6 +186,7 @@ export class Scroller {
     if (top < viewTop + margin) target = top - margin;
     else if (bottom > viewTop + view - margin) target = bottom + margin - view;
     if (target !== null) this.applyScroll(target, instant);
+    this.lastFollowedWord = wordEl;
     return true;
   }
 
@@ -249,8 +271,10 @@ export class Scroller {
     // parked the follow for the rest of the song.
     if (this.userScrolling && !this.isInViewport(element)) return;
 
-    this.userScrolling = false;
-    this.contentEl.classList.remove("HideLineBlur");
+    if (this.userScrolling) {
+      this.userScrolling = false;
+      this.contentEl.classList.remove("HideLineBlur");
+    }
     if (this.lastLine === element) {
       this.followOversizedLine(current, positionMs, false);
       return;

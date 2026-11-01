@@ -5,6 +5,7 @@ export interface Springish {
   Step(dt: number): number;
   SetGoal(goal: number, replace?: boolean): void;
   StepIfNeeded?(goal: number, dt: number): number;
+  GetGoal?(): number;
   CanSleep?(): boolean;
 }
 
