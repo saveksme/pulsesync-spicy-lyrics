@@ -48,7 +48,17 @@ export function installNativeLyricsHook(doc: Document, onOpen: (context: NativeL
     doc.documentElement.classList.toggle(OWNS_LYRICS_BUTTON_CLASS, owned && buttons.length > 0);
   };
 
-  const observer = new MutationObserver(sync);
+  let pending = false;
+  let disposed = false;
+  const scheduleSync = () => {
+    if (pending || disposed) return;
+    pending = true;
+    queueMicrotask(() => {
+      pending = false;
+      if (!disposed) sync();
+    });
+  };
+  const observer = new MutationObserver(scheduleSync);
   observer.observe(doc.body ?? doc.documentElement, {
     subtree: true,
     childList: true,
@@ -61,6 +71,7 @@ export function installNativeLyricsHook(doc: Document, onOpen: (context: NativeL
   return {
     refresh: sync,
     dispose() {
+      disposed = true;
       observer.disconnect();
       doc.removeEventListener("click", onClick, true);
       doc.documentElement.classList.remove(OWNS_LYRICS_BUTTON_CLASS);

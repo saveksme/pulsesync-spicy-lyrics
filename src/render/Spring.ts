@@ -101,6 +101,13 @@ export class Spring {
 		return true;
 	}
 
+	// Resting springs keep their exact current value without another integration step.
+	StepIfNeeded(goal: number, dt: number): number {
+		if (goal === this.g && this.CanSleep()) return this.p;
+		this.SetGoal(goal);
+		return this.Step(dt);
+	}
+
 	GetGoal(): number {
 		return this.g;
 	}

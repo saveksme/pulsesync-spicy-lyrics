@@ -51,6 +51,9 @@ export class NowBar {
   private hoverMedia = false;
   private lastPointerMove = -Infinity;
   private lastHoverStep = 0;
+  private lastControlsOpacity = "";
+  private lastArtworkBrightness = "";
+  private lastControlsPointerEvents = "";
 
   constructor(
     private readonly root: HTMLElement,
@@ -387,9 +390,21 @@ export class NowBar {
     this.lastHoverStep = now;
     const opacity = this.controlsOpacity.Step(dt);
     const brightness = this.artworkBrightness.Step(dt);
-    this.mediaBox.style.setProperty("--ControlsOpacity", opacity.toFixed(3));
-    this.mediaBox.style.setProperty("--ArtworkBrightness", brightness.toFixed(3));
-    this.mediaContent.style.pointerEvents = opacity > 0.05 ? "" : "none";
+    const opacityText = opacity.toFixed(3);
+    const brightnessText = brightness.toFixed(3);
+    if (opacityText !== this.lastControlsOpacity) {
+      this.lastControlsOpacity = opacityText;
+      this.mediaBox.style.setProperty("--ControlsOpacity", opacityText);
+    }
+    if (brightnessText !== this.lastArtworkBrightness) {
+      this.lastArtworkBrightness = brightnessText;
+      this.mediaBox.style.setProperty("--ArtworkBrightness", brightnessText);
+    }
+    const pointerEvents = opacity > 0.05 ? "" : "none";
+    if (pointerEvents !== this.lastControlsPointerEvents) {
+      this.lastControlsPointerEvents = pointerEvents;
+      this.mediaContent.style.pointerEvents = pointerEvents;
+    }
   }
 
   destroy(): void {

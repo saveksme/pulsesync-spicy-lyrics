@@ -105,6 +105,12 @@ const SimpleLetterStrength = {
 
 const noopSpring: Springish = { Step: () => 0, SetGoal: () => {} };
 
+function stepSpring(spring: Springish, goal: number, dt: number): number {
+  if (spring.StepIfNeeded) return spring.StepIfNeeded(goal, dt);
+  spring.SetGoal(goal);
+  return spring.Step(dt);
+}
+
 const ScaleSpline = getSpline(ScaleRange);
 const GlowSpline = getSpline(GlowRange);
 const LineGlowSpline = getSpline(LineGlowRange);
@@ -168,6 +174,13 @@ function promoteLine(el: HTMLElement): void {
   el.style.willChange = "transform, opacity, text-shadow, scale";
   el.style.backfaceVisibility = "hidden";
   promotedLines.add(el);
+}
+
+function demoteLine(el: HTMLElement): void {
+  if (!promotedLines.has(el)) return;
+  el.style.removeProperty("will-change");
+  el.style.removeProperty("backface-visibility");
+  promotedLines.delete(el);
 }
 
 const translate = (value: number) => `translate3d(0, calc(var(--DefaultLyricsSize) * ${value}), 0)`;
@@ -244,11 +257,14 @@ export class Animator {
       const distance = Math.abs(i - activeIndex);
       const amount = distance === 0 ? 0 : Math.min(BLUR_MULTIPLIER * distance, max);
       setStyleIfChanged(el, "--BlurAmount", state === "Active" || distance === 0 ? "0px" : `${amount}px`, 0.25);
-      promoteLine(el);
+      // Only the lines around the active one need compositor hints for the moving words.
+      if (distance <= 3) promoteLine(el);
+      else demoteLine(el);
     }
   }
 
   private setLineClasses(line: LineItem, state: ElementState, position: number): void {
+    if (line.Status === state && !line.DotLine) return;
     const el = line.HTMLElement;
     setClass(el, "Active", state === "Active");
     setClass(el, "NotSung", state === "NotSung");
@@ -267,14 +283,10 @@ export class Animator {
     }
     const at = state === "Active" ? percentage : state === "NotSung" ? 0 : 1;
     const store = word.AnimatorStore;
-    store.Scale.SetGoal(DotScaleSpline.at(at));
-    store.YOffset.SetGoal(DotYOffsetSpline.at(at));
-    store.Glow.SetGoal(DotGlowSpline.at(at));
-    store.Opacity!.SetGoal(this.DotOpacitySpline.at(at));
-    const scale = store.Scale.Step(dt);
-    const yOffset = store.YOffset.Step(dt) ?? 0;
-    const glow = store.Glow.Step(dt);
-    const opacity = store.Opacity!.Step(dt);
+    const scale = stepSpring(store.Scale, DotScaleSpline.at(at), dt);
+    const yOffset = stepSpring(store.YOffset, DotYOffsetSpline.at(at), dt);
+    const glow = stepSpring(store.Glow, DotGlowSpline.at(at), dt);
+    const opacity = stepSpring(store.Opacity!, this.DotOpacitySpline.at(at), dt);
     setStyleIfChanged(word.HTMLElement, "transform", translate(yOffset), 0.0001, yOffset);
     if (!this.simple) setStyleIfChanged(word.HTMLElement, "scale", `${scale}`, 0.001);
     setStyleIfChanged(word.HTMLElement, "opacity", `${opacity}`, 0.001);
@@ -348,22 +360,16 @@ export class Animator {
         letterState === "NotSung" ? rest : letterState === "Sung" ? 100 : k === activeIndex ? rest + 120 * easeSinOut(activePercentage) : rest;
       setStyleIfChanged(letter.HTMLElement, this.gradientProp(), `${gradient}%`);
 
-      store.Scale.SetGoal(targetScale);
-      store.YOffset.SetGoal(targetYOffset);
-      store.Glow.SetGoal(targetGlow);
-      this.writeLetter(letter, store.Scale.Step(dt), store.YOffset.Step(dt), store.Glow.Step(dt));
+      this.writeLetter(letter, stepSpring(store.Scale, targetScale, dt), stepSpring(store.YOffset, targetYOffset, dt), stepSpring(store.Glow, targetGlow, dt));
     }
   }
 
   private restLetters(word: NonNullable<LineItem["Syllables"]>["Lead"][number], dt: number, sung: boolean, track?: (s: SpringSet) => void): void {
     for (const letter of word.Letters!) {
       const store = this.ensureLetterSprings(letter);
-      store.Scale.SetGoal(this.LetterScaleSpline.at(sung ? 1 : 0));
-      store.YOffset.SetGoal(this.LetterYOffsetSpline.at(sung ? 1 : 0));
-      store.Glow.SetGoal(GlowSpline.at(sung ? 1 : 0));
-      const scale = store.Scale.Step(dt);
-      const yOffset = store.YOffset.Step(dt);
-      const glow = store.Glow.Step(dt);
+      const scale = stepSpring(store.Scale, this.LetterScaleSpline.at(sung ? 1 : 0), dt);
+      const yOffset = stepSpring(store.YOffset, this.LetterYOffsetSpline.at(sung ? 1 : 0), dt);
+      const glow = stepSpring(store.Glow, GlowSpline.at(sung ? 1 : 0), dt);
       track?.(store);
       setStyleIfChanged(letter.HTMLElement, this.gradientProp(), sung ? "100%" : this.simple ? "-50%" : "-20%");
       this.writeLetter(letter, scale, yOffset, glow);
@@ -391,12 +397,9 @@ export class Animator {
       const gradient =
         state === "Active" ? (this.simple ? -50 + 120 * percentage : -20 + 120 * percentage) : state === "NotSung" ? (this.simple ? -50 : -20) : 100;
       const store = word.AnimatorStore;
-      store.Scale.SetGoal(ScaleSpline.at(at));
-      store.YOffset.SetGoal(this.YOffsetSpline.at(at));
-      store.Glow.SetGoal(GlowSpline.at(at));
-      const scale = store.Scale.Step(dt);
-      const yOffset = store.YOffset.Step(dt);
-      const glow = store.Glow.Step(dt);
+      const scale = stepSpring(store.Scale, ScaleSpline.at(at), dt);
+      const yOffset = stepSpring(store.YOffset, this.YOffsetSpline.at(at), dt);
+      const glow = stepSpring(store.Glow, GlowSpline.at(at), dt);
       if (!this.simple) setStyleIfChanged(word.HTMLElement, "scale", `${scale}`, 0.001);
       setStyleIfChanged(word.HTMLElement, "transform", translate(yOffset), 0.0001, yOffset);
       if (!word.LetterGroup) {
@@ -432,12 +435,9 @@ export class Animator {
       }
       if (word.AnimatorStore) {
         const store = word.AnimatorStore;
-        store.Scale.SetGoal(ScaleSpline.at(1));
-        store.YOffset.SetGoal(this.YOffsetSpline.at(1));
-        store.Glow.SetGoal(GlowSpline.at(1));
-        const scale = store.Scale.Step(dt);
-        const yOffset = store.YOffset.Step(dt);
-        const glow = store.Glow.Step(dt);
+        const scale = stepSpring(store.Scale, ScaleSpline.at(1), dt);
+        const yOffset = stepSpring(store.YOffset, this.YOffsetSpline.at(1), dt);
+        const glow = stepSpring(store.Glow, GlowSpline.at(1), dt);
         track(store);
         setStyleIfChanged(word.HTMLElement, "transform", translate(yOffset), 0.0001, yOffset);
         if (!this.simple) setStyleIfChanged(word.HTMLElement, "scale", `${scale}`, 0.001);
@@ -465,8 +465,7 @@ export class Animator {
       line.AnimatorStore.Glow.SetGoal(LineGlowSpline.at(0), true);
     }
     const percentage = getProgress(position, line.StartTime, line.EndTime);
-    line.AnimatorStore.Glow.SetGoal(LineGlowSpline.at(state === "Active" ? percentage : state === "NotSung" ? 0 : 1));
-    const glow = line.AnimatorStore.Glow.Step(dt);
+    const glow = stepSpring(line.AnimatorStore.Glow, LineGlowSpline.at(state === "Active" ? percentage : state === "NotSung" ? 0 : 1), dt);
     if (!this.simple) {
       const gradient = state === "Active" ? percentage * 100 : state === "NotSung" ? -20 : 100;
       setStyleIfChanged(line.HTMLElement, "--gradient-position", `${gradient}%`);

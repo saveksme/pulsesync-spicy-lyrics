@@ -186,6 +186,7 @@ export class Scroller {
     if (rendered.type === "Static") return;
     const lines = rendered.lines;
     if (lines.length === 0) return;
+    if (!isPlaying && positionMs === this.lastPosition && this.lastLine !== null && !this.forceQueued && !this.smoothQueued && this.now() >= this.holdUntil) return;
     const index = getScrollLineIndex(lines, positionMs);
     const current = index === null ? null : lines[index];
 

@@ -138,6 +138,12 @@ html.SpicyLyricsOwnsLyricsButton [data-pulsesync-addon-player-button][aria-label
   display: none;
 }
 
+/* Compositor hints are applied by the Animator only around the active line,
+   instead of keeping every lyric line promoted all the time. */
+#SpicyLyricsHost #SpicyLyricsPage .LyricsContainer .LyricsContent .line {
+  will-change: auto;
+}
+
 /* NowBar spacing (from Spicy's ContentBox.css, without Compact mode). */
 #SpicyLyricsPage.NowBarStatus__Open {
   --LyricsLeftSidePadding: calc(50cqw - var(--NowBarRightSpacing) * 0.3);

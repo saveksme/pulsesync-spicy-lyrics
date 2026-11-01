@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Spring } from "../src/render/Spring";
 import { getSpline } from "../src/render/Spline";
 import { isLetterCapable, isRtl, minLetterCapableDuration, splitLetters, stripZeroWidth } from "../src/render/text";
@@ -12,6 +12,25 @@ describe("render primitives", () => {
     for (let i = 0; i < 600; i++) s.Step(1 / 60);
     expect(s.Step(1 / 60)).toBeCloseTo(1, 4);
     expect(s.CanSleep()).toBe(true);
+  });
+
+  it("StepIfNeeded integrates only when the goal changed or the spring is awake", () => {
+    const s = new Spring(0, 0.88, 0.64);
+    let steps = 0;
+    const original = s.Step.bind(s);
+    vi.spyOn(s, "Step").mockImplementation((dt) => {
+      steps++;
+      return original(dt);
+    });
+    s.SetGoal(1);
+    for (let i = 0; i < 600; i++) s.Step(1 / 60);
+    expect(s.CanSleep()).toBe(true);
+    expect(s.StepIfNeeded(1, 1 / 60)).toBeCloseTo(1, 4);
+    expect(steps).toBe(600);
+    s.StepIfNeeded(1, 1 / 60);
+    expect(steps).toBe(600);
+    s.StepIfNeeded(0, 1 / 60);
+    expect(steps).toBe(601);
   });
 
   it("spline passes through points", () => {
