@@ -15,10 +15,6 @@
   user-select: none;
   -webkit-user-drag: none;
   opacity: 1;
-  transition:
-    left 0.5s cubic-bezier(0.91, 0.04, 0.94, 0.98),
-    transform 0.6s cubic-bezier(0.78, 0, 0.22, 1);
-  will-change: transform;
 }
 
 #SpicyLyricsPage.UseSpicyFont,

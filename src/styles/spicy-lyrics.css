@@ -107,7 +107,6 @@
   flex-wrap: wrap;
   transition: opacity 0.2s cubic-bezier(0.61, 1, 0.88, 1);
   font-size: var(--font-size) !important;
-  will-change: transform, opacity;
 }
 
 #SpicyLyricsPage.SpicyRenderer .LyricsContainer .LyricsContent .line .word,
@@ -118,12 +117,6 @@
   -webkit-text-fill-color: transparent;
   background-clip: text;
   position: relative;
-}
-
-#SpicyLyricsPage.SpicyRenderer .LyricsContainer .LyricsContent .line.Active .word,
-#SpicyLyricsPage.SpicyRenderer .LyricsContainer .LyricsContent .line.Active .letterGroup,
-#SpicyLyricsPage.SpicyRenderer .LyricsContainer .LyricsContent .line.Active .letter {
-  will-change: transform, scale, opacity;
 }
 
 #SpicyLyricsPage.SpicyRenderer .LyricsContainer .LyricsContent .line,

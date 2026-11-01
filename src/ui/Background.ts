@@ -74,6 +74,9 @@ export class Background {
   private kawarpFailed = false;
   private speed = 1;
   private applied = "";
+  private loadedCover: { instance: Kawarp; url: string } | null = null;
+  private loadChain: Promise<void> = Promise.resolve();
+  private pendingDisposals = new Set<Kawarp>();
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private destroyed = false;
 
@@ -102,7 +105,13 @@ export class Background {
         const kawarp = this.kawarp;
         this.kawarp = null;
         this.canvas = null;
-        this.later(() => kawarp?.dispose(), LAYER_SETTLE_MS);
+        if (kawarp) {
+          this.pendingDisposals.add(kawarp);
+          this.later(() => {
+            this.pendingDisposals.delete(kawarp);
+            kawarp.dispose();
+          }, LAYER_SETTLE_MS);
+        }
       }
       this.later(() => layer.remove(), LAYER_SETTLE_MS);
     }
@@ -144,6 +153,9 @@ export class Background {
     for (const timer of this.timers) clearTimeout(timer);
     this.timers.clear();
     this.kawarp?.dispose();
+    for (const instance of this.pendingDisposals) instance.dispose();
+    this.pendingDisposals.clear();
+    this.loadedCover = null;
     this.kawarp = null;
     this.canvas = null;
     for (const layer of this.hostEl.querySelectorAll(":scope > .spicy-dynamic-bg")) layer.remove();
@@ -184,21 +196,30 @@ export class Background {
       this.kawarp = kawarp;
       this.hostEl.prepend(canvas);
     }
-    try {
-      await kawarp!.loadImage(cover);
-    } catch {
-      return;
-    }
-    if (this.destroyed || this.applied !== key || this.kawarp !== kawarp) return;
-    // Kawarp's own loop is replaced by render() on the page's frame loop.
-    kawarp!.start();
-    const loop = kawarp as unknown as { animationId: number | null };
-    if (loop.animationId != null) cancelAnimationFrame(loop.animationId);
-    loop.animationId = null;
-    if (fresh) {
-      this.reveal(canvas!);
-      kawarp!.setOptions({ transitionDuration: KAWARP_TRANSITION_MS });
-    }
+    const previous = this.loadChain;
+    const run = async () => {
+      await previous.catch(() => undefined);
+      if (this.loadedCover?.instance !== kawarp || this.loadedCover.url !== cover) {
+        try {
+          await kawarp!.loadImage(cover);
+        } catch {
+          return;
+        }
+        this.loadedCover = { instance: kawarp!, url: cover };
+      }
+      if (this.destroyed || this.applied !== key || this.kawarp !== kawarp) return;
+      // Kawarp's own loop is replaced by render() on the page's frame loop.
+      kawarp!.start();
+      const loop = kawarp as unknown as { animationId: number | null };
+      if (loop.animationId != null) cancelAnimationFrame(loop.animationId);
+      loop.animationId = null;
+      if (fresh) {
+        this.reveal(canvas!);
+        kawarp!.setOptions({ transitionDuration: KAWARP_TRANSITION_MS });
+      }
+    };
+    this.loadChain = run();
+    return this.loadChain;
   }
 
   private async applyImage(cover: string): Promise<void> {

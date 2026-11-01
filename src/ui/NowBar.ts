@@ -384,12 +384,10 @@ export class NowBar {
     const now = performance.now();
     const idle = now - this.lastPointerMove >= CONTROLS_IDLE_MS && !this.hoverMedia;
     const hoveringPage = now - this.lastPointerMove < CONTROLS_IDLE_MS;
-    this.controlsOpacity.SetGoal(idle ? 0 : this.hoverMedia ? 0.985 : hoveringPage ? 0.65 : 0);
-    this.artworkBrightness.SetGoal(idle ? 1 : this.hoverMedia ? 0.55 : hoveringPage ? 0.78 : 1);
     const dt = this.lastHoverStep ? Math.min(0.1, (now - this.lastHoverStep) / 1000) : 1 / 60;
     this.lastHoverStep = now;
-    const opacity = this.controlsOpacity.Step(dt);
-    const brightness = this.artworkBrightness.Step(dt);
+    const opacity = this.controlsOpacity.StepIfNeeded(idle ? 0 : this.hoverMedia ? 0.985 : hoveringPage ? 0.65 : 0, dt);
+    const brightness = this.artworkBrightness.StepIfNeeded(idle ? 1 : this.hoverMedia ? 0.55 : hoveringPage ? 0.78 : 1, dt);
     const opacityText = opacity.toFixed(3);
     const brightnessText = brightness.toFixed(3);
     if (opacityText !== this.lastControlsOpacity) {

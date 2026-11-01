@@ -318,6 +318,7 @@ export class LyricsPage {
     page.classList.toggle("NowBarStatus__Closed", !open);
     page.classList.toggle("NowBarSide__Right", right);
     page.classList.toggle("NowBarSide__Left", !right);
+    if (open) this.nowBar?.update(this.clock.getPositionMs());
     this.scroller?.holdCentre(LAYOUT_SETTLE_MS);
   }
 
@@ -524,7 +525,7 @@ export class LyricsPage {
           this.animator.frame(this.rendered, position);
           this.scroller?.frame(this.rendered, position, playing);
         }
-        this.nowBar?.update(position);
+        if (this.view.nowBarOpen || this.mode === "cinema") this.nowBar?.update(position);
         this.background?.render();
         this.frameErrors = 0;
       } catch (error) {

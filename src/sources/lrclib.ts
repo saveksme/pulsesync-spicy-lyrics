@@ -40,8 +40,15 @@ const isRecord = (value: unknown): value is LrclibRecord =>
   typeof value === "object" && value !== null && !Array.isArray(value) && typeof (value as LrclibRecord).id === "number";
 
 // LRCLIB sends a lyricsfile with every record, timed or not; only timed lines count.
-const isSynced = (record: LrclibRecord) =>
-  Boolean(record.syncedLyrics?.trim()) || (typeof record.lyricsfile === "string" && parseLyricsfile(record.lyricsfile, "lrclib") !== null);
+// Parse each record once: candidate filtering and conversion used to parse the same YAML repeatedly.
+const parsedFiles = new WeakMap<LrclibRecord, ReturnType<typeof parseLyricsfile>>();
+function parsedFile(record: LrclibRecord): ReturnType<typeof parseLyricsfile> {
+  if (typeof record.lyricsfile !== "string") return null;
+  if (!parsedFiles.has(record)) parsedFiles.set(record, parseLyricsfile(record.lyricsfile, "lrclib"));
+  return parsedFiles.get(record)!;
+}
+
+const isSynced = (record: LrclibRecord) => Boolean(record.syncedLyrics?.trim()) || (typeof record.lyricsfile === "string" && parsedFile(record) !== null);
 
 export function pickLrclibCandidate(track: TrackInfo, items: LrclibRecord[]): LrclibRecord | null {
   const duration = track.durationMs / 1000;
@@ -49,13 +56,13 @@ export function pickLrclibCandidate(track: TrackInfo, items: LrclibRecord[]): Lr
     .filter((record) => isRecord(record) && !record.instrumental)
     .map((record) => ({
       record,
-      synced: isSynced(record),
       delta: duration > 0 && typeof record.duration === "number" ? Math.abs(record.duration - duration) : 0,
     }))
     .filter(
-      ({ record, synced, delta }) =>
-        (synced || Boolean(record.plainLyrics?.trim())) && delta <= (record.hasWordSync ? WORD_TOLERANCE_SEC : LINE_TOLERANCE_SEC),
-    );
+      ({ record, delta }) =>
+        delta <= (record.hasWordSync ? WORD_TOLERANCE_SEC : LINE_TOLERANCE_SEC) && (isSynced(record) || Boolean(record.plainLyrics?.trim())),
+    )
+    .map(({ record, delta }) => ({ record, delta, synced: isSynced(record) }));
   candidates.sort(
     (a, b) =>
       Number(Boolean(b.record.hasWordSync)) - Number(Boolean(a.record.hasWordSync)) ||
@@ -132,7 +139,7 @@ export function lrclibToLyrics(
   record: LrclibRecord,
   durationSec: number,
 ): { word: SyllableLyrics | null; synced: LineLyrics | SyllableLyrics | null; plain: StaticLyrics | null } {
-  const fromFile = record.lyricsfile ? parseLyricsfile(record.lyricsfile, "lrclib") : null;
+  const fromFile = record.lyricsfile ? parsedFile(record) : null;
   const word = fromFile?.Type === "Syllable" ? fromFile : null;
   const synced = record.syncedLyrics
     ? parseLrc(record.syncedLyrics, { source: "lrclib", durationSec: durationSec > 0 ? durationSec : undefined })

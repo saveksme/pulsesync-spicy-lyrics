@@ -38,14 +38,18 @@ export function installNativeLyricsHook(doc: Document, onOpen: (context: NativeL
 
   const sync = () => {
     const owned = enabled();
-    const buttons = doc.querySelectorAll<HTMLButtonElement>(LYRICS_BUTTON_SELECTOR);
-    if (owned) {
-      for (const button of buttons) {
-        if (button.disabled) button.disabled = false;
-        if (button.getAttribute("aria-hidden") === "true") button.removeAttribute("aria-hidden");
-      }
+    if (!owned) {
+      doc.documentElement.classList.remove(OWNS_LYRICS_BUTTON_CLASS);
+      return;
     }
-    doc.documentElement.classList.toggle(OWNS_LYRICS_BUTTON_CLASS, owned && buttons.length > 0);
+    const buttons = doc.querySelectorAll<HTMLButtonElement>(LYRICS_BUTTON_SELECTOR);
+    for (const button of buttons) {
+      if (button.disabled) button.disabled = false;
+      if (button.getAttribute("aria-hidden") === "true") button.removeAttribute("aria-hidden");
+    }
+    doc.documentElement.classList.toggle(OWNS_LYRICS_BUTTON_CLASS, buttons.length > 0);
+    // Our own disabled/aria-hidden writes must not schedule another full-document query.
+    observer.takeRecords();
   };
 
   let pending = false;

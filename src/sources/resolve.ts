@@ -299,7 +299,10 @@ export function createLyricsResolver(host: Host, deps: { spotify?: SpotifyIdReso
       .then(({ lyrics, degraded }) => {
         if (controller.signal.aborted) return null;
         const ttl = degraded ? DEGRADED_TTL_MS : lyrics ? HIT_TTL_MS : MISS_TTL_MS;
+        memory.delete(track.id);
         memory.set(track.id, { lyrics, at: Date.now(), sig, ttl });
+        // The on-disk cache is bounded; keep the in-memory lyrics cache bounded too.
+        if (memory.size > STORED_LIMIT) memory.delete(memory.keys().next().value!);
         return lyrics;
       })
       .finally(() => {
