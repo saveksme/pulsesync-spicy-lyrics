@@ -50,12 +50,14 @@ it("opens from the track menu's show-lyrics item but leaves its hide-lyrics item
 
 // Yandex Music greys its button out for tracks it has no lyrics for; Spicy Lyrics may have them.
 it("keeps Yandex Music's lyrics button usable for tracks Yandex Music has no lyrics for", async () => {
-  document.body.innerHTML = `<button disabled aria-hidden="true" data-test-id="PLAYERBAR_DESKTOP_SYNC_LYRICS_BUTTON"></button>`;
+  document.body.innerHTML = `<button disabled data-disabled="true" aria-disabled="true" aria-hidden="true" data-test-id="PLAYERBAR_DESKTOP_SYNC_LYRICS_BUTTON"></button>`;
   const button = document.querySelector("button")!;
   const onOpen = vi.fn();
   install(onOpen, () => true);
   expect(button.disabled).toBe(false);
   expect(button.hasAttribute("aria-hidden")).toBe(false);
+  expect(button.hasAttribute("data-disabled")).toBe(false);
+  expect(button.hasAttribute("aria-disabled")).toBe(false);
   button.disabled = true;
   await settle();
   expect(button.disabled).toBe(false);

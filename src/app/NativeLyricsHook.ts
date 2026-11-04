@@ -45,6 +45,8 @@ export function installNativeLyricsHook(doc: Document, onOpen: (context: NativeL
     const buttons = doc.querySelectorAll<HTMLButtonElement>(LYRICS_BUTTON_SELECTOR);
     for (const button of buttons) {
       if (button.disabled) button.disabled = false;
+      button.removeAttribute("data-disabled");
+      button.removeAttribute("aria-disabled");
       if (button.getAttribute("aria-hidden") === "true") button.removeAttribute("aria-hidden");
     }
     doc.documentElement.classList.toggle(OWNS_LYRICS_BUTTON_CLASS, buttons.length > 0);
