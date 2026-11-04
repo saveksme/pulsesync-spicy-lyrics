@@ -236,14 +236,20 @@ html.SpicyLyricsOwnsLyricsButton [data-pulsesync-addon-player-button][aria-label
   pointer-events: none;
 }
 
-/* Spicy's hover background follows the line's words (lineHover.ts) instead of the whole column,
-   with room around them for the sung words' growth and glow: half a letter's height to the
-   sides, a third above and below. */
+/* Spicy's hover background follows the line's words (lineHover.ts) instead of the whole column:
+   a quiet, compact outline that does not hide the text or its glow. */
 #SpicyLyricsPage.SpicyRenderer:not(.NoLineHoverBackground) .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer:not([data-lyrics-type="Static"]) .line:not(.musical-line)::before {
-  left: calc(var(--HoverLeft, 0px) - 0.5em);
-  width: calc(var(--HoverWidth, 100%) + 1em);
-  height: calc(100% + 0.6em);
+  left: calc(var(--HoverLeft, 0px) - 0.25em);
+  width: calc(var(--HoverWidth, 100%) + 0.5em);
+  height: calc(100% + 0.2em);
   transform: translateY(-50%);
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+}
+
+#SpicyLyricsPage.SpicyRenderer:not(.NoLineHoverBackground) .LyricsContainer .LyricsContent .SpicyLyricsScrollContainer:not([data-lyrics-type="Static"]) .line:not(.musical-line):hover::before {
+  scale: 1;
+  backdrop-filter: none;
 }
 
 /* Line blur off (setting): Spicy's HideLineBlur, but permanent. */

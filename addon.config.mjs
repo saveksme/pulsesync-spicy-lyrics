@@ -4,7 +4,7 @@ const addonConfig = {
     name: 'SP Lyrics',
     description:
         'Тексты песен в стиле Spicy Lyrics: пословная синхронизация, пружинная анимация, динамический фон и NowBar. Источник — библиотека Spicy Lyrics (Apple Music, сообщество) с запасными источниками Яндекс Музыки и LRCLIB.',
-    version: '1.0.0',
+    version: '1.0.1',
     author: 'savme',
     image: 'Assets/avatar.png',
     banner: 'Assets/banner.png',
