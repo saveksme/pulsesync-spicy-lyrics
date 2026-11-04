@@ -1,6 +1,6 @@
 {
   "name": "pulsesync-sp-lyrics",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "description": "SP Lyrics for Yandex Music — PulseSync web-addon",
