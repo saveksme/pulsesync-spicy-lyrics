@@ -21,11 +21,11 @@ const text = (value: unknown): string | undefined => (typeof value === "string" 
 const finite = (value: unknown): number | undefined => (typeof value === "number" && Number.isFinite(value) ? value : undefined);
 
 // Yandex cover URIs look like "avatars.yandex.net/get-music-content/…/%%",
-// where %% is replaced by the wanted size.
+// where %% is replaced by the wanted size. Other add-ons may swap in blob:/data: covers.
 export function coverUrl(coverUri: string | undefined, size = "1000x1000"): string | undefined {
   if (!coverUri) return undefined;
   const sized = coverUri.replace("%%", size);
-  return /^https?:\/\//.test(sized) ? sized : `https://${sized.replace(/^\/+/, "")}`;
+  return /^(?:https?|blob|data):/.test(sized) ? sized : `https://${sized.replace(/^\/+/, "")}`;
 }
 
 function durationOf(meta: Record<string, unknown>): number {

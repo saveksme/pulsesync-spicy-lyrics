@@ -46,6 +46,11 @@ describe("track", () => {
     expect(coverUrl(undefined)).toBeUndefined();
   });
 
+  it("keeps blob: and data: covers supplied by other add-ons", () => {
+    expect(coverUrl("blob:http://127.0.0.1/uuid")).toBe("blob:http://127.0.0.1/uuid");
+    expect(coverUrl("data:image/png;base64,abc")).toBe("data:image/png;base64,abc");
+  });
+
   // ListenBrainz matches by name only, so a podcast episode must never reach Spicy or Spotify.
   it("treats podcasts and audiobooks like uploads (no catalogue lookups)", () => {
     expect(toTrackInfo({ id: "123", title: "Episode 12", type: "podcast-episode" })!.isUgc).toBe(true);
