@@ -14,3 +14,17 @@ describe("Yandex Music layering", () => {
     expect(zIndex).toBeLessThan(400);
   });
 });
+
+describe("hover animations", () => {
+  it("animates the view-control dimming instead of snapping it", () => {
+    const css = readFileSync(new URL("../src/styles/ym.css", import.meta.url), "utf8");
+    const rule = css.match(/\.ViewControl\s*\{[^}]*transition:\s*([^}]+);/);
+    expect(rule).not.toBeNull();
+    expect(rule![1]).toContain("opacity");
+  });
+
+  it("reserves the timeline hover height so time labels do not jump", () => {
+    const css = readFileSync(new URL("../src/styles/ym.css", import.meta.url), "utf8");
+    expect(css).toMatch(/\.Header > \.Timeline\s*\{\s*min-height:\s*2\.3cqh;/);
+  });
+});

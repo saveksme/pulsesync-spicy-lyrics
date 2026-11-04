@@ -80,7 +80,8 @@ html.SpicyLyricsOwnsLyricsButton [data-pulsesync-addon-player-button][aria-label
   scale: none;
   transition:
     background-color var(--ym-duration-transition, 0.2s),
-    transform var(--ym-duration-transition, 0.2s);
+    transform var(--ym-duration-transition, 0.2s),
+    opacity var(--ym-duration-transition, 0.2s);
 }
 
 #SpicyLyricsHost #SpicyLyricsPage .ContentBox > .ViewControls .ViewControl:is(:hover, :focus-visible) {
@@ -194,6 +195,12 @@ html.SpicyLyricsOwnsLyricsButton [data-pulsesync-addon-player-button][aria-label
 
 #SpicyLyricsPage .ContentBox > .ViewControls {
   z-index: 101;
+}
+
+/* The timeline row keeps the hover height, so the time labels do not jump
+   when the progress bar grows on hover. */
+#SpicyLyricsHost #SpicyLyricsPage .Header > .Timeline {
+  min-height: 2.3cqh;
 }
 
 #SpicyLyricsPage.NoBackground .ContentBox {
