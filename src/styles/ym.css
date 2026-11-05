@@ -125,6 +125,13 @@ html.SpicyLyricsOwnsLyricsButton [data-pulsesync-addon-player-button][aria-label
   position: relative;
 }
 
+/* In cinema the animated background fills the whole window, title bar included;
+   only the content is inset below it. */
+#SpicyLyricsHost.Mode_Cinema #SpicyLyricsPage .ContentBox {
+  box-sizing: border-box;
+  padding-top: var(--SpicyTitleBarHeight, 0px);
+}
+
 /* SimpleBar is not used: the lyrics scroll natively, smooth unless jumping. */
 #SpicyLyricsPage .LyricsContainer .LyricsContent {
   scroll-behavior: smooth;

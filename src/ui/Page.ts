@@ -129,6 +129,7 @@ export class LyricsPage {
     void this.background!.setCover(this.track?.coverUrl, this.track?.averageColor);
     this.renderLyrics();
     this.doc.body.appendChild(this.hostEl!);
+    this.syncTitleBar();
     requestAnimationFrame(() => {
       if (!this.hostEl || this.closing !== null) return;
       this.hostEl.classList.add("Visible");
@@ -164,6 +165,7 @@ export class LyricsPage {
     this.scroller = null;
     this.rendered = null;
     this.wasPlaying = null;
+    this.syncTitleBar();
   }
 
   toggle(): void {
@@ -180,6 +182,7 @@ export class LyricsPage {
     if (!this.isOpen) return;
     this.nowBar?.setTrack(track);
     void this.background?.setCover(track?.coverUrl, track?.averageColor);
+    this.syncTitleBar();
   }
 
   setLyrics(state: LyricsState): void {
@@ -326,7 +329,8 @@ export class LyricsPage {
     void this.host.storage.set(VIEW_KEY, { ...this.view }).catch(() => undefined);
   }
 
-  // Page mode covers Yandex Music's content column; cinema fills the window below its title bar.
+  // Page mode covers Yandex Music's content column; cinema fills the whole window,
+  // with the content inset below the title bar so the background runs underneath it.
   private placeHost(): void {
     if (!this.hostEl) return;
     const view = this.doc.defaultView ?? window;
@@ -335,12 +339,14 @@ export class LyricsPage {
         ? computeCinemaRect(this.doc.querySelector(TITLE_BAR_SELECTOR), { width: view.innerWidth, height: view.innerHeight })
         : this.contentRect;
     if (!rect) return;
+    const titleBarInset = this.mode === "cinema" ? rect.top : 0;
     Object.assign(this.hostEl.style, {
-      top: `${rect.top}px`,
+      top: this.mode === "cinema" ? "0px" : `${rect.top}px`,
       left: `${rect.left}px`,
       width: `${rect.width}px`,
-      height: `${rect.height}px`,
+      height: `${this.mode === "cinema" ? view.innerHeight : rect.height}px`,
     });
+    this.hostEl.style.setProperty("--SpicyTitleBarHeight", `${titleBarInset}px`);
   }
 
   private setMode(mode: PageMode): void {
@@ -355,6 +361,20 @@ export class LyricsPage {
     this.placeHost();
     this.applyViewClasses();
     this.renderViewControls();
+    this.syncTitleBar();
+  }
+
+  // The title bar is transparent in cinema mode, so the animated background runs
+  // straight through it; the previous background is restored on close/page mode.
+  private syncTitleBar(): void {
+    const titleBar = this.doc.querySelector<HTMLElement>(TITLE_BAR_SELECTOR);
+    if (!titleBar) return;
+    const color = this.mode === "cinema" && this.isOpen;
+    if (color) {
+      titleBar.style.backgroundColor = "transparent";
+    } else {
+      titleBar.style.removeProperty("background-color");
+    }
   }
 
   private renderViewControls(): void {

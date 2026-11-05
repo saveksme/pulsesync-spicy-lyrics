@@ -53,6 +53,22 @@ it("opens over the whole window with the cover beside the lyrics", () => {
   expect(document.getElementById("SpicyLyricsPage")!.classList.contains("NowBarStatus__Open")).toBe(true);
 });
 
+// The title bar follows the cover color in cinema mode and is restored on close.
+it("recolors the title bar in cinema and restores it on close", () => {
+  vi.useFakeTimers();
+  const titleBar = document.createElement("div");
+  titleBar.className = "TitleBar_root__test";
+  document.body.appendChild(titleBar);
+  const page = newPage();
+  page.setTrack({ id: "1", title: "Song", artists: ["A"], durationMs: 1000, averageColor: "#123456", isUgc: false });
+  page.open();
+  expect(titleBar.style.backgroundColor).not.toBe("");
+  page.close();
+  vi.advanceTimersByTime(300);
+  expect(titleBar.style.backgroundColor).toBe("");
+  titleBar.remove();
+});
+
 // Spicy Lyrics starts with the NowBar closed (uiState $isNowBarOpen = false) in its page view.
 it("keeps the NowBar closed in the content-area view, like Spicy Lyrics", async () => {
   const page = newPage();
@@ -214,7 +230,7 @@ it("never starts the WebGL background when another background style is chosen", 
   expect(kawarps.created).toBe(0);
 });
 
-it("keeps Yandex Music's title bar uncovered in cinema mode", () => {
+it("runs the cinema background under Yandex Music's title bar", () => {
   const bar = document.createElement("div");
   bar.className = "TitleBar_root__QjdOZ";
   bar.getBoundingClientRect = () => ({ top: 0, bottom: 32, left: 0, right: 1024, width: 1024, height: 32, x: 0, y: 0, toJSON: () => ({}) });
@@ -222,10 +238,12 @@ it("keeps Yandex Music's title bar uncovered in cinema mode", () => {
   const page = newPage();
   page.open("cinema");
   const host = document.getElementById("SpicyLyricsHost")!;
-  expect(host.style.top).toBe("32px");
-  expect(host.style.height).toBe(`${window.innerHeight - 32}px`);
+  expect(host.style.top).toBe("0px");
+  expect(host.style.height).toBe(`${window.innerHeight}px`);
+  expect(host.style.getPropertyValue("--SpicyTitleBarHeight")).toBe("32px");
   page.open("page");
   expect(host.style.top).toBe("0px");
+  expect(host.style.getPropertyValue("--SpicyTitleBarHeight")).toBe("0px");
   bar.remove();
 });
 
